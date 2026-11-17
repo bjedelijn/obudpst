@@ -209,6 +209,8 @@ struct configuration {
         int testIntTime;                 // Test interval time (sec)
         int subIntPeriod;                // Sub-interval period (sec)
         int controlPort;                 // Control port number for setup requests
+        int dataPortStart;               // Optional server test port range start
+        int dataPortEnd;                 // Optional server test port range end
         int sockSndBuf;                  // Socket send buffer size
         int sockRcvBuf;                  // Socket receive buffer size
         int lowThresh;                   // Low delay variation threshold
