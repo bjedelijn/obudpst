@@ -1,0 +1,30 @@
+name: Legacy UDPST 7.4.0 build and checks
+on:
+  push:
+    branches: [qon/legacy]
+  pull_request:
+    branches: [qon/legacy]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler: [gcc, clang]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build libssl-dev
+      - name: Configure
+        env:
+          CC: ${{ matrix.compiler }}
+        run: cmake -S . -B build-ci -G Ninja -DCMAKE_BUILD_TYPE=Release
+      - name: Build
+        run: cmake --build build-ci --parallel 2
+      - name: Check executable
+        run: test -x build-ci/udpst
+      - name: Record binary version
+        run: ./build-ci/udpst -v
