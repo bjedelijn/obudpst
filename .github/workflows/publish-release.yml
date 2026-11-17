@@ -1,71 +1,109 @@
-name: Qonnected UDPST Modern — Release
+name: Qonnected UDPST Modern — Debian 12 Release
 on:
   workflow_dispatch:
     inputs:
       confirm:
-        description: 'Type PUBLISH-BETA-1 to confirm prerelease publication'
+        description: 'Type PUBLISH-MODERN-BETA-2 to publish Beta 2'
         required: true
         type: string
 permissions:
-  contents: write
+  contents: read
 concurrency:
-  group: publish-modern-v9.1.0-beta.1
+  group: publish-modern-v9.1.0-beta.2
   cancel-in-progress: false
 jobs:
-  publish:
-    if: ${{ inputs.confirm == 'PUBLISH-BETA-1' }}
+  build:
+    if: ${{ inputs.confirm == 'PUBLISH-MODERN-BETA-2' }}
     runs-on: ubuntu-24.04
+    container: debian:12
     steps:
-      - name: Checkout pinned Beta 1 source
+      - name: Install Debian 12 build tools
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends git ca-certificates cmake ninja-build build-essential libssl-dev binutils python3 tar gzip coreutils
+      - name: Checkout pinned release source
         uses: actions/checkout@v4
         with:
           ref: 41ac2cda31382c3e7b0c4bb3549e4d7e490d6b7e
           persist-credentials: false
-      - name: Verify source and release availability
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Verify source and Debian baseline
         shell: bash
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "41ac2cda31382c3e7b0c4bb3549e4d7e490d6b7e"
-          if gh release view modern-v9.1.0-beta.1 >/dev/null 2>&1; then
-            echo 'Release already exists; refusing to overwrite' >&2
-            exit 1
-          fi
-          if git ls-remote --exit-code --tags "https://github.com/${GITHUB_REPOSITORY}.git" refs/tags/modern-v9.1.0-beta.1 | grep -q .; then
-            echo 'Tag already exists; refusing to overwrite' >&2
-            exit 1
-          fi
-      - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build libssl-dev
-      - name: Configure and build
+          test "$(. /etc/os-release; echo "$ID:$VERSION_ID")" = "debian:12"
+      - name: Build
         run: |
           cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
           cmake --build build --parallel 2
           test -x build/udpst
-      - name: Run scoped regression tests
+      - name: Regression tests
+        shell: bash
         run: |
+          set -euo pipefail
           python3 -m unittest discover -s tests -p 'test_baseline.py' -v
           python3 -m unittest discover -s tests -p 'test_port_range_source.py' -v
+      - name: Enforce Debian 12 glibc compatibility
+        shell: bash
+        run: |
+          set -euo pipefail
+          ! readelf --version-info build/udpst | grep -Eq 'GLIBC_2\.(3[7-9]|[4-9][0-9])'
+          ldd build/udpst
+          ldd --version | head -1
       - name: Package and checksum
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p dist/package
           cp build/udpst README.md RELEASING.md BETA1-VALIDATION.md dist/package/
-          printf 'tag=modern-v9.1.0-beta.1\ncommit=%s\n' "$(git rev-parse HEAD)" > dist/package/BUILD-INFO.txt
-          tar -czf dist/udpst-modern-v9.1.0-beta.1-linux-amd64.tar.gz -C dist/package .
-          (cd dist && sha256sum udpst-modern-v9.1.0-beta.1-linux-amd64.tar.gz > SHA256SUMS)
-      - name: Publish GitHub prerelease
+          printf 'tag=modern-v9.1.0-beta.2\ncommit=%s\nbuild_os=debian:12\n' "$(git rev-parse HEAD)" > dist/package/BUILD-INFO.txt
+          tar -czf dist/udpst-modern-v9.1.0-beta.2-linux-amd64.tar.gz -C dist/package .
+          (cd dist && sha256sum udpst-modern-v9.1.0-beta.2-linux-amd64.tar.gz > SHA256SUMS)
+      - name: Upload verified release files
+        uses: actions/upload-artifact@v4
+        with:
+          name: modern-debian12-beta2
+          path: |
+            dist/udpst-modern-v9.1.0-beta.2-linux-amd64.tar.gz
+            dist/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Download verified release files
+        uses: actions/download-artifact@v4
+        with:
+          name: modern-debian12-beta2
+          path: dist
+      - name: Verify checksum and refuse existing release/tag
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-        shell: bash
         run: |
           set -euo pipefail
-          gh release create modern-v9.1.0-beta.1 \
-            dist/udpst-modern-v9.1.0-beta.1-linux-amd64.tar.gz dist/SHA256SUMS \
+          (cd dist && sha256sum -c SHA256SUMS)
+          if gh release view modern-v9.1.0-beta.2 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo 'Release already exists; refusing to overwrite' >&2
+            exit 1
+          fi
+          if git ls-remote --exit-code --tags "https://github.com/${GITHUB_REPOSITORY}.git" refs/tags/modern-v9.1.0-beta.2 | grep -q .; then
+            echo 'Tag already exists; refusing to overwrite' >&2
+            exit 1
+          fi
+      - name: Publish Debian 12 prerelease
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create modern-v9.1.0-beta.2 \
+            dist/udpst-modern-v9.1.0-beta.2-linux-amd64.tar.gz dist/SHA256SUMS \
             --repo "$GITHUB_REPOSITORY" \
-            --target "$(git rev-parse HEAD)" \
-            --title "Modern UDPST 9.1.0 Beta 1" \
-            --notes-file BETA1-VALIDATION.md \
+            --target "41ac2cda31382c3e7b0c4bb3549e4d7e490d6b7e" \
+            --title "Modern UDPST Debian 12 Beta 2" \
+            --notes "Debian 12 (glibc 2.36) compatible build from pinned Beta 1 source 41ac2cda31382c3e7b0c4bb3549e4d7e490d6b7e. Regression tests and ELF compatibility gate passed. Verify functionality before production deployment." \
             --prerelease
