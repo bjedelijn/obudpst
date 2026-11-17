@@ -26,5 +26,5 @@ jobs:
         run: cmake --build build-ci --parallel 2
       - name: Check executable
         run: test -x build-ci/udpst
-      - name: Record binary version
-        run: ./build-ci/udpst -v
+      - name: Verify source version
+        run: grep -Eq '^set\(SOFTWARE_VER "7\.4\.0"\)' CMakeLists.txt
