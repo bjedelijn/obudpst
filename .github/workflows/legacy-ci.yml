@@ -28,3 +28,5 @@ jobs:
         run: test -x build-ci/udpst
       - name: Verify source version
         run: grep -Eq '^set\(SOFTWARE_VER "7\.4\.0"\)' CMakeLists.txt
+      - name: Legacy port range regression checks
+        run: python3 -m unittest discover -s tests -p 'test_legacy_port_range_source.py' -v
