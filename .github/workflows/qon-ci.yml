@@ -1,4 +1,4 @@
-name: Qonnected UDPST build and tests
+name: Qonnected UDPST Modern — Build & Test
 on:
   push:
     branches: [qon/ci-tests, qon/legacy, qon/modern]
