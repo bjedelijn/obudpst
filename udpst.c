@@ -1190,6 +1190,23 @@ int proc_parameters(int argc, char **argv, int fd) {
                 var = write(fd, scratch, var);
                 return -1;
         }
+        // Server-only optional fixed UDP data port range; default remains ephemeral.
+        if (repo.isServer) {
+                const char *range = getenv("UDPST_DATA_PORT_RANGE");
+                if (range != NULL && *range != '\0') {
+                        int first = 0, last = 0;
+                        char tail = '\0';
+                        if (sscanf(range, "%d-%d%c", &first, &last, &tail) != 2 ||
+                            first < 1 || last > 65535 || first > last ||
+                            (conf.controlPort >= first && conf.controlPort <= last)) {
+                                var = sprintf(scratch, "ERROR: Invalid UDPST_DATA_PORT_RANGE (expected START-END, excluding control port)\n");
+                                var = write(fd, scratch, var);
+                                return -1;
+                        }
+                        conf.dataPortStart = first;
+                        conf.dataPortEnd = last;
+                }
+        }
         if (!conf.verbose && conf.debug) {
                 var = sprintf(scratch, "ERROR: Debug only available when used with verbose\n");
                 var = write(fd, scratch, var);
