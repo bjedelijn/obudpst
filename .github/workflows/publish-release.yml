@@ -1,4 +1,4 @@
-name: Publish modern UDPST Beta 1
+name: Qonnected UDPST Modern — Release
 on:
   workflow_dispatch:
     inputs:
