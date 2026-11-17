@@ -24,4 +24,4 @@ jobs:
       - name: Executable exists
         run: test -x build/udpst
       - name: Python regression tests
-        run: python3 -m unittest discover -s tests -p 'test_baseline.py' -v
+        run: python3 -m unittest discover -s tests -p 'test_baseline.py' -v && python3 -m unittest discover -s tests -p 'test_port_range_source.py' -v
