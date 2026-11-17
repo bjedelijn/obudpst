@@ -30,6 +30,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
           test "$(git rev-parse HEAD)" = "1ea4c79ceeec82c48bdaed3ad0ed1bbfee44f299"
           test "$(. /etc/os-release; echo "$ID:$VERSION_ID")" = "debian:12"
       - name: Build
