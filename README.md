@@ -1,4 +1,13 @@
 # OB-UDPST
+
+> **Fork development note:** This repository retains the upstream Broadband Forum
+> documentation below. Experimental fork changes are developed in separate branches.
+> The optional `UDPST_DATA_PORT_RANGE=40000-40499` server setting is currently
+> under development on `qon/ci-tests`, not an upstream feature or stable release.
+> Do not deploy the feature to production until runtime and interoperability
+> tests pass. See [FORK-DEVELOPMENT.md](FORK-DEVELOPMENT.md) and
+> [RELEASING.md](RELEASING.md).
+>
 Open Broadband-UDP Speed Test (OB-UDPST) is a client/server software utility to
 demonstrate one approach of doing IP capacity measurements as described by:
 
