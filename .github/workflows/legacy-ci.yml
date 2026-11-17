@@ -1,4 +1,4 @@
-name: Legacy UDPST 7.4.0 build and checks
+name: Qonnected UDPST Legacy — Build & Test
 on:
   push:
     branches: [qon/legacy]
