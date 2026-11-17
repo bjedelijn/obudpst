@@ -1,0 +1,71 @@
+name: Qonnected UDPST Legacy — Release
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type PUBLISH-LEGACY-BETA-1 to confirm prerelease publication'
+        required: true
+        type: string
+permissions:
+  contents: write
+concurrency:
+  group: publish-legacy-v7.4.0-beta.1
+  cancel-in-progress: false
+jobs:
+  publish:
+    if: ${{ inputs.confirm == 'PUBLISH-LEGACY-BETA-1' }}
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout pinned Legacy Beta 1 source
+        uses: actions/checkout@v4
+        with:
+          ref: 1ea4c79ceeec82c48bdaed3ad0ed1bbfee44f299
+          persist-credentials: false
+      - name: Verify source and release availability
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "1ea4c79ceeec82c48bdaed3ad0ed1bbfee44f299"
+          if gh release view legacy-v7.4.0-beta.1 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo 'Release already exists; refusing to overwrite' >&2
+            exit 1
+          fi
+          if git ls-remote --exit-code --tags "https://github.com/${GITHUB_REPOSITORY}.git" refs/tags/legacy-v7.4.0-beta.1 | grep -q .; then
+            echo 'Tag already exists; refusing to overwrite' >&2
+            exit 1
+          fi
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build libssl-dev
+      - name: Configure and build
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --parallel 2
+          test -x build/udpst
+      - name: Run Legacy regression tests
+        run: |
+          grep -Eq '^set\(SOFTWARE_VER "7\.4\.0"\)' CMakeLists.txt
+          python3 -m unittest discover -s tests -p 'test_legacy_port_range_source.py' -v
+      - name: Package and checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist/package
+          cp build/udpst README.md LEGACY-BETA1-VALIDATION.md dist/package/
+          printf 'tag=legacy-v7.4.0-beta.1\ncommit=%s\n' "$(git rev-parse HEAD)" > dist/package/BUILD-INFO.txt
+          tar -czf dist/udpst-legacy-v7.4.0-beta.1-linux-amd64.tar.gz -C dist/package .
+          (cd dist && sha256sum udpst-legacy-v7.4.0-beta.1-linux-amd64.tar.gz > SHA256SUMS)
+      - name: Publish GitHub prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release create legacy-v7.4.0-beta.1 \
+            dist/udpst-legacy-v7.4.0-beta.1-linux-amd64.tar.gz dist/SHA256SUMS \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$(git rev-parse HEAD)" \
+            --title "Legacy UDPST 7.4.0 Beta 1" \
+            --notes-file LEGACY-BETA1-VALIDATION.md \
+            --prerelease
