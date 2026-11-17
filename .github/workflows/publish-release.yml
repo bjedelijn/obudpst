@@ -68,5 +68,4 @@ jobs:
             --target "$(git rev-parse HEAD)" \
             --title "Modern UDPST 9.1.0 Beta 1" \
             --notes-file BETA1-VALIDATION.md \
-            --prerelease \
-            --verify-tag=false
+            --prerelease
