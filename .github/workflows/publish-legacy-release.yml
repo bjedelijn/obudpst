@@ -1,71 +1,109 @@
-name: Qonnected UDPST Legacy — Release
+name: Qonnected UDPST Legacy — Debian 12 Release
 on:
   workflow_dispatch:
     inputs:
       confirm:
-        description: 'Type PUBLISH-LEGACY-BETA-1 to confirm prerelease publication'
+        description: 'Type PUBLISH-LEGACY-BETA-2 to publish Beta 2'
         required: true
         type: string
 permissions:
-  contents: write
+  contents: read
 concurrency:
-  group: publish-legacy-v7.4.0-beta.1
+  group: publish-legacy-v7.4.0-beta.2
   cancel-in-progress: false
 jobs:
-  publish:
-    if: ${{ inputs.confirm == 'PUBLISH-LEGACY-BETA-1' }}
+  build:
+    if: ${{ inputs.confirm == 'PUBLISH-LEGACY-BETA-2' }}
     runs-on: ubuntu-24.04
+    container: debian:12
     steps:
-      - name: Checkout pinned Legacy Beta 1 source
+      - name: Install Debian 12 build tools
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends git ca-certificates cmake ninja-build build-essential libssl-dev binutils python3 tar gzip coreutils
+      - name: Checkout pinned release source
         uses: actions/checkout@v4
         with:
           ref: 1ea4c79ceeec82c48bdaed3ad0ed1bbfee44f299
           persist-credentials: false
-      - name: Verify source and release availability
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Verify source and Debian baseline
         shell: bash
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "1ea4c79ceeec82c48bdaed3ad0ed1bbfee44f299"
-          if gh release view legacy-v7.4.0-beta.1 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo 'Release already exists; refusing to overwrite' >&2
-            exit 1
-          fi
-          if git ls-remote --exit-code --tags "https://github.com/${GITHUB_REPOSITORY}.git" refs/tags/legacy-v7.4.0-beta.1 | grep -q .; then
-            echo 'Tag already exists; refusing to overwrite' >&2
-            exit 1
-          fi
-      - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build libssl-dev
-      - name: Configure and build
+          test "$(. /etc/os-release; echo "$ID:$VERSION_ID")" = "debian:12"
+      - name: Build
         run: |
           cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
           cmake --build build --parallel 2
           test -x build/udpst
-      - name: Run Legacy regression tests
+      - name: Regression tests
+        shell: bash
         run: |
+          set -euo pipefail
           grep -Eq '^set\(SOFTWARE_VER "7\.4\.0"\)' CMakeLists.txt
           python3 -m unittest discover -s tests -p 'test_legacy_port_range_source.py' -v
+      - name: Enforce Debian 12 glibc compatibility
+        shell: bash
+        run: |
+          set -euo pipefail
+          ! readelf --version-info build/udpst | grep -Eq 'GLIBC_2\.(3[7-9]|[4-9][0-9])'
+          ldd build/udpst
+          ldd --version | head -1
       - name: Package and checksum
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p dist/package
           cp build/udpst README.md LEGACY-BETA1-VALIDATION.md dist/package/
-          printf 'tag=legacy-v7.4.0-beta.1\ncommit=%s\n' "$(git rev-parse HEAD)" > dist/package/BUILD-INFO.txt
-          tar -czf dist/udpst-legacy-v7.4.0-beta.1-linux-amd64.tar.gz -C dist/package .
-          (cd dist && sha256sum udpst-legacy-v7.4.0-beta.1-linux-amd64.tar.gz > SHA256SUMS)
-      - name: Publish GitHub prerelease
+          printf 'tag=legacy-v7.4.0-beta.2\ncommit=%s\nbuild_os=debian:12\n' "$(git rev-parse HEAD)" > dist/package/BUILD-INFO.txt
+          tar -czf dist/udpst-legacy-v7.4.0-beta.2-linux-amd64.tar.gz -C dist/package .
+          (cd dist && sha256sum udpst-legacy-v7.4.0-beta.2-linux-amd64.tar.gz > SHA256SUMS)
+      - name: Upload verified release files
+        uses: actions/upload-artifact@v4
+        with:
+          name: legacy-debian12-beta2
+          path: |
+            dist/udpst-legacy-v7.4.0-beta.2-linux-amd64.tar.gz
+            dist/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Download verified release files
+        uses: actions/download-artifact@v4
+        with:
+          name: legacy-debian12-beta2
+          path: dist
+      - name: Verify checksum and refuse existing release/tag
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-        shell: bash
         run: |
           set -euo pipefail
-          gh release create legacy-v7.4.0-beta.1 \
-            dist/udpst-legacy-v7.4.0-beta.1-linux-amd64.tar.gz dist/SHA256SUMS \
+          (cd dist && sha256sum -c SHA256SUMS)
+          if gh release view legacy-v7.4.0-beta.2 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo 'Release already exists; refusing to overwrite' >&2
+            exit 1
+          fi
+          if git ls-remote --exit-code --tags "https://github.com/${GITHUB_REPOSITORY}.git" refs/tags/legacy-v7.4.0-beta.2 | grep -q .; then
+            echo 'Tag already exists; refusing to overwrite' >&2
+            exit 1
+          fi
+      - name: Publish Debian 12 prerelease
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create legacy-v7.4.0-beta.2 \
+            dist/udpst-legacy-v7.4.0-beta.2-linux-amd64.tar.gz dist/SHA256SUMS \
             --repo "$GITHUB_REPOSITORY" \
-            --target "$(git rev-parse HEAD)" \
-            --title "Legacy UDPST 7.4.0 Beta 1" \
-            --notes-file LEGACY-BETA1-VALIDATION.md \
+            --target "1ea4c79ceeec82c48bdaed3ad0ed1bbfee44f299" \
+            --title "Legacy UDPST Debian 12 Beta 2" \
+            --notes "Debian 12 (glibc 2.36) compatible build from pinned Beta 1 source 1ea4c79ceeec82c48bdaed3ad0ed1bbfee44f299. Regression tests and ELF compatibility gate passed. Verify functionality before production deployment." \
             --prerelease
