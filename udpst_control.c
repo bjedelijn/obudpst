@@ -1919,10 +1919,11 @@ int new_conn(int activefd, char *host, int port, int type, int (*priaction)(int)
         // Set FD as non-blocking
         // Console FD (i.e., stdin) gets setup in main()
         //
-        if (type != T_CONSOLE) {
+        if (type != T_CONSOLE && type != T_LOG && type != T_NULL) {
 #ifdef _WIN32
-                /* Winsock sockets require ioctlsocket(), not CRT fcntl(). */
-                if (udpst_win32_set_nonblocking((SOCKET)(uintptr_t)fd) != 0) {
+                /* Only UDP connections have Winsock handles. Never cast CRT fd. */
+                if (conn[i].winSocket == INVALID_SOCKET ||
+                    udpst_win32_set_nonblocking(conn[i].winSocket) != 0) {
 #else
                 var = fcntl(fd, F_GETFL, 0);
                 if (fcntl(fd, F_SETFL, var | O_NONBLOCK) != 0) {
@@ -1957,9 +1958,15 @@ int new_conn(int activefd, char *host, int port, int type, int (*priaction)(int)
         //
         // Set address reuse
         //
+#ifdef _WIN32
+        /* Socket options below must use the pointer-sized Winsock handle. */
+#define UDPST_CONN_SOCKET conn[i].winSocket
+#else
+#define UDPST_CONN_SOCKET fd
+#endif
         if (type == T_UDP) {
                 var = 1;
-                if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (const void *) &var, sizeof(var)) < 0) {
+                if (setsockopt(UDPST_CONN_SOCKET, SOL_SOCKET, SO_REUSEADDR, (const void *) &var, sizeof(var)) < 0) {
                         var = sprintf(scratch, "[%d]SET SO_REUSEADDR ERROR: %s\n", i, strerror(errno));
                         send_proc(errConn, scratch, var);
                         init_conn(i, TRUE);
@@ -1976,13 +1983,13 @@ int new_conn(int activefd, char *host, int port, int type, int (*priaction)(int)
                 // Set socket buffers
                 //
                 if (conf.sockSndBuf != 0 && conf.sockRcvBuf != 0) {
-                        if (setsockopt(fd, SOL_SOCKET, SO_SNDBUF, (const void *) &conf.sockSndBuf, sizeof(conf.sockSndBuf)) < 0) {
+                        if (setsockopt(UDPST_CONN_SOCKET, SOL_SOCKET, SO_SNDBUF, (const void *) &conf.sockSndBuf, sizeof(conf.sockSndBuf)) < 0) {
                                 var = sprintf(scratch, "[%d]SET SO_SNDBUF ERROR: %s\n", i, strerror(errno));
                                 send_proc(errConn, scratch, var);
                                 init_conn(i, TRUE);
                                 return -1;
                         }
-                        if (setsockopt(fd, SOL_SOCKET, SO_RCVBUF, (const void *) &conf.sockRcvBuf, sizeof(conf.sockRcvBuf)) < 0) {
+                        if (setsockopt(UDPST_CONN_SOCKET, SOL_SOCKET, SO_RCVBUF, (const void *) &conf.sockRcvBuf, sizeof(conf.sockRcvBuf)) < 0) {
                                 var = sprintf(scratch, "[%d]SET SO_RCVBUF ERROR: %s\n", i, strerror(errno));
                                 send_proc(errConn, scratch, var);
                                 init_conn(i, TRUE);
@@ -1994,14 +2001,14 @@ int new_conn(int activefd, char *host, int port, int type, int (*priaction)(int)
                 //
                 if (conf.verbose) {
                         var = sizeof(sndbuf);
-                        if (getsockopt(fd, SOL_SOCKET, SO_SNDBUF, (void *) &sndbuf, (socklen_t *) &var) < 0) {
+                        if (getsockopt(UDPST_CONN_SOCKET, SOL_SOCKET, SO_SNDBUF, (void *) &sndbuf, (socklen_t *) &var) < 0) {
                                 var = sprintf(scratch, "[%d]GET SO_SNDBUF ERROR: %s\n", i, strerror(errno));
                                 send_proc(errConn, scratch, var);
                                 init_conn(i, TRUE);
                                 return -1;
                         }
                         var = sizeof(rcvbuf);
-                        if (getsockopt(fd, SOL_SOCKET, SO_RCVBUF, (void *) &rcvbuf, (socklen_t *) &var) < 0) {
+                        if (getsockopt(UDPST_CONN_SOCKET, SOL_SOCKET, SO_RCVBUF, (void *) &rcvbuf, (socklen_t *) &var) < 0) {
                                 var = sprintf(scratch, "[%d]GET SO_RCVBUF ERROR: %s\n", i, strerror(errno));
                                 send_proc(errConn, scratch, var);
                                 init_conn(i, TRUE);
