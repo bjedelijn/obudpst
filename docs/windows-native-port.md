@@ -29,3 +29,10 @@ Target test server: `speedtest.nikhef.qonnected.net`
 - Do not modify the Linux server configuration.
 - Do not merge to `main` until Windows CI builds and basic client tests pass.
 - A successful compile alone does not prove measurement accuracy.
+
+## Windows compatibility targets
+- Primary: Windows 11 x64; Windows Server 2016, 2019, 2022 and 2025 x64.
+- Legacy validation targets: Windows Server 2012 and 2012 R2 x64, subject to testing and compatible toolchain/API selection.
+- Clarification required: there is no standalone Microsoft product named "Windows Server 2011". If Windows Small Business Server 2011 is intended, it is based on Windows Server 2008 R2 and requires a separate compatibility assessment.
+- Avoid introducing mandatory .NET or WSL dependencies; aim for a standalone native executable. Static linking and actual minimum supported Windows API version must be verified by CI and runtime testing.
+- Build on Windows 11/modern Windows Server first, then test legacy server compatibility explicitly; do not claim untested OS support.
