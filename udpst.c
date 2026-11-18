@@ -112,6 +112,11 @@
 #include <io.h>
 #include <signal.h>
 #include "platform/win32/udpst_win32_getopt.h"
+/* MSVC equivalents for POSIX CRT functions used by the client. */
+#define random rand
+#define srandom srand
+#define strcasecmp _stricmp
+#define strtok_r strtok_s
 /* CRT descriptors are used for console/file connections, not Winsock SOCKETs. */
 #ifndef STDIN_FILENO
 #define STDIN_FILENO 0
