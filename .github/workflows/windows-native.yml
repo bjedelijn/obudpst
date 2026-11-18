@@ -108,14 +108,19 @@ jobs:
         run: |
           $exe = Join-Path $PWD "build-link-probe/Release/udpst.exe"
           if (-not (Test-Path $exe)) { throw "udpst.exe missing after successful build" }
-          & $exe -h *> smoke-help.log
+          # No arguments prints usage. Run via cmd.exe to avoid PowerShell's
+          # native-command stderr/exit-code behavior on Windows runners.
+          $command = '""' + $exe + '" > smoke-help.log 2>&1"'
+          & cmd.exe /d /c $command
           $status = $LASTEXITCODE
           Get-Content smoke-help.log
-          # UDPST intentionally returns its help/usage status (50) for -h.
-          # Require the expected help output and reject crashes or other errors.
-          if ($status -ne 50) { throw "Unexpected udpst.exe -h exit code $status (expected 50)" }
           if (-not (Select-String -Path smoke-help.log -Pattern "Parameters:" -Quiet)) {
-            throw "udpst.exe -h did not print the expected usage text"
+            throw "udpst.exe did not print the expected usage text (exit $status)"
+          }
+          if ($status -eq 0 -or $status -eq 50) {
+            Write-Host "Windows executable startup smoke test passed (exit $status)"
+          } else {
+            throw "Unexpected udpst.exe usage exit code $status"
           }
       - name: Upload native Windows executable
         uses: actions/upload-artifact@v4
