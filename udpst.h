@@ -491,7 +491,15 @@ struct repository {
 // Data structure representing a connection to a device, file, socket, etc.
 //
 struct connection {
-        int fd; // File descriptor
+        int fd; // POSIX descriptor / CRT console-file descriptor
+#ifdef _WIN32
+        /*
+         * Native UDP SOCKET is pointer-sized on Win64. Keep it separate
+         * from fd until the socket lifecycle and WSAPoll registration are
+         * converted together; never cast SOCKET into fd.
+         */
+        SOCKET winSocket;
+#endif
 #define T_UNKNOWN  0
 #define T_UDP      1
 #define T_CONSOLE  2
