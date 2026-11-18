@@ -26,6 +26,7 @@
 #include <ws2tcpip.h>
 #include <windows.h>
 #include <stdint.h>
+#include <time.h> /* MSVC struct timespec used by UTC scheduler adapter */
 
 /*
  * ECN uses the low two bits of the IPv4 TOS / IPv6 Traffic Class octet
@@ -83,7 +84,7 @@ static int udpst_win32_realtime_ns(uint64_t *ns)
 
 /*
  * Update the POSIX-shaped timespec used by the existing UDPST scheduler.
- * The caller includes <time.h> before using this helper.
+ * This header includes <time.h> to define struct timespec for MSVC.
  * FILETIME conversion is UTC and avoids unsupported MSVC clock_gettime().
  */
 static int udpst_win32_utc_now(struct timespec *timestamp)
