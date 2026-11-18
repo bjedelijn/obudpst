@@ -2711,8 +2711,10 @@ int service_recvlprc(int connindex) {
 //
 int recv_proc(int connindex) {
         register struct connection *c = &conn[connindex];
+#ifndef _WIN32
         static struct mmsghdr mmsg[RECVMMSG_SIZE]; // Static array
         static struct iovec iov[RECVMMSG_SIZE];    // Static array
+#endif
         char *rcvbuf, *nextcmsg;
         int i, var, recvsize;
 
@@ -2738,6 +2740,16 @@ int recv_proc(int connindex) {
                         //
                         // Prepare message structures
                         //
+#ifdef _WIN32
+                        /* Windows has no recvmmsg(): receive a single connected
+                         * UDP datagram, then leave coalescing to a future port.
+                         * Never interpret a truncated UDPST header as valid. */
+                        repo.rcvDataSize = recv((SOCKET)(uintptr_t)c->fd,
+                                                repo.defBuffer, recvsize, 0);
+                        if (repo.rcvDataSize >= 0) {
+                                c->dataReady = FALSE;
+                        }
+#else
                         memset(mmsg, 0, sizeof(mmsg));
                         rcvbuf   = repo.defBuffer;
                         nextcmsg = rxCmsgBuf;
@@ -2785,6 +2797,7 @@ int recv_proc(int connindex) {
                                 c->dataReady = FALSE; // Indicate all data has been read from this connection
                         }
 #endif
+#endif /* !_WIN32 */
                 } else {
                         repo.rcvDataSize = recv(c->fd, repo.defBuffer, recvsize, 0);
                         if (c->secAction == &service_statuspdu) {
