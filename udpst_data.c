@@ -2747,7 +2747,7 @@ int recv_proc(int connindex) {
                         /* Windows has no recvmmsg(): receive a single connected
                          * UDP datagram, then leave coalescing to a future port.
                          * Never interpret a truncated UDPST header as valid. */
-                        repo.rcvDataSize = recv((SOCKET)(uintptr_t)c->fd,
+                        repo.rcvDataSize = recv(c->winSocket,
                                                 repo.defBuffer, recvsize, 0);
                         if (repo.rcvDataSize >= 0) {
                                 c->dataReady = FALSE;
@@ -2802,14 +2802,27 @@ int recv_proc(int connindex) {
 #endif
 #endif /* !_WIN32 */
                 } else {
+                        #ifdef _WIN32
+                        repo.rcvDataSize = recv(c->winSocket, repo.defBuffer, recvsize, 0);
+#else
                         repo.rcvDataSize = recv(c->fd, repo.defBuffer, recvsize, 0);
+#endif
                         if (c->secAction == &service_statuspdu) {
                                 c->dataReady = FALSE; // Indicate all data has been read from this connection
                         }
                 }
         } else if (c->subType == SOCK_DGRAM) {
                 repo.remSasLen   = sizeof(repo.remSas);
+                #ifdef _WIN32
+                {
+                        int addrlen = (int)repo.remSasLen;
+                        repo.rcvDataSize = recvfrom(c->winSocket, repo.defBuffer, recvsize, 0,
+                                                    (struct sockaddr *)&repo.remSas, &addrlen);
+                        repo.remSasLen = addrlen;
+                }
+#else
                 repo.rcvDataSize = recvfrom(c->fd, repo.defBuffer, recvsize, 0, (struct sockaddr *) &repo.remSas, &repo.remSasLen);
+#endif
         } else {
                 repo.rcvDataSize = read(c->fd, repo.defBuffer, recvsize);
         }
@@ -2879,10 +2892,19 @@ int send_proc(int connindex, char *sendbuffer, int sendsize) {
         // Issue send
         //
         if (c->subType == SOCK_STREAM || c->connected) {
+                #ifdef _WIN32
+                actual = send(c->winSocket, sendbuffer, sendsize, 0);
+#else
                 actual = send(c->fd, sendbuffer, sendsize, 0);
+#endif
 
         } else if (c->subType == SOCK_DGRAM) {
+                #ifdef _WIN32
+                actual = sendto(c->winSocket, sendbuffer, sendsize, 0,
+                                (struct sockaddr *)&repo.remSas, (int)repo.remSasLen);
+#else
                 actual = sendto(c->fd, sendbuffer, sendsize, 0, (struct sockaddr *) &repo.remSas, repo.remSasLen);
+#endif
         } else {
                 var = c->fd;
                 if ((c->type == T_CONSOLE) || (c->type == T_NULL)) {
