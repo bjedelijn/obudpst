@@ -89,18 +89,19 @@ add_definitions(-DRUNDIR=\"${CMAKE_INSTALL_PREFIX}/run\")
 
 CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/config.h.cmake ${CMAKE_CURRENT_BINARY_DIR}/config.h)
 
-# Define a library called udpst_core containing all core functionality
-add_library(udpst_core udpst_control.c udpst_data.c udpst_srates.c cJSON.c)
-set(libraries udpst_core ${libraries})
-
-add_executable(udpst udpst.c)
-# Windows uses Winsock2; the Unix math library is not available on MSVC.
-# This is build-system preparation: the source still needs a Windows port.
+# Keep the real Linux implementation intact. The Windows client still needs
+# its socket and event-loop port; do not ship a false-positive udpst.exe.
 if(WIN32)
-    target_compile_definitions(udpst_core PRIVATE _WIN32_WINNT=0x0602 WIN32_LEAN_AND_MEAN)
-    target_compile_definitions(udpst PRIVATE _WIN32_WINNT=0x0602 WIN32_LEAN_AND_MEAN)
-    target_link_libraries(udpst ws2_32 ${libraries})
+    add_library(udpst_win32_srates STATIC udpst_srates.c)
+    target_compile_definitions(udpst_win32_srates PRIVATE
+        _WIN32_WINNT=0x0602 WIN32_LEAN_AND_MEAN)
+    target_link_libraries(udpst_win32_srates PRIVATE ws2_32)
+    message(STATUS "Windows sending-rate module build enabled; full UDPST client not yet ported")
 else()
+    # Define a library called udpst_core containing all core functionality.
+    add_library(udpst_core udpst_control.c udpst_data.c udpst_srates.c cJSON.c)
+    set(libraries udpst_core ${libraries})
+    add_executable(udpst udpst.c)
     target_link_libraries(udpst ${libraries} m)
 endif()
 
