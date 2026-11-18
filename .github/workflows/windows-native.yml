@@ -11,6 +11,7 @@ on:
       - '*.c'
       - '*.h'
       - 'docs/windows-native-port.md'
+      - 'platform/win32/**'
 
 jobs:
   windows-x64-diagnostic:
@@ -50,3 +51,15 @@ jobs:
           name: udpst-windows-x64-untested
           path: build-windows/Release/udpst.exe
           if-no-files-found: error
+
+  win32-platform-smoke:
+    name: Windows x64 platform primitives
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure portability tests
+        run: cmake -S platform/win32/tests -B build-platform -A x64
+      - name: Build portability tests
+        run: cmake --build build-platform --config Release
+      - name: Run portability tests
+        run: ctest --test-dir build-platform -C Release --output-on-failure
