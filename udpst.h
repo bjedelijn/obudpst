@@ -238,8 +238,15 @@
 //
 // File descriptor flags and file modes
 //
+#ifdef _WIN32
+/* Log files use CRT descriptors, not Winsock SOCKET handles.
+ * O_BINARY avoids unwanted newline translation in binary writes. */
+#define LOGFILE_FLAGS (_O_WRONLY | _O_CREAT | _O_APPEND | _O_BINARY)
+#define LOGFILE_MODE  (_S_IREAD | _S_IWRITE)
+#else
 #define LOGFILE_FLAGS (O_WRONLY | O_CREAT | O_APPEND | O_NONBLOCK)
 #define LOGFILE_MODE  (S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH)
+#endif
 
 //----------------------------------------------------------------------------
 //
