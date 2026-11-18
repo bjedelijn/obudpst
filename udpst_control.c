@@ -2095,7 +2095,11 @@ int connected(int connindex) {
         // Update local IP address and port number
         //
         var = sizeof(sas);
+#ifdef _WIN32
+        if (getsockname(c->winSocket, (struct sockaddr *) &sas, (int *)&var) == SOCKET_ERROR) {
+#else
         if (getsockname(c->fd, (struct sockaddr *) &sas, (socklen_t *) &var) < 0) {
+#endif
                 var = sprintf(scratch, "[%d]GETSOCKNAME ERROR: %s\n", connindex, strerror(errno));
                 send_proc(errConn, scratch, var);
                 return -1;
@@ -2108,7 +2112,11 @@ int connected(int connindex) {
         // Obtain remote IP address and port number
         //
         var = sizeof(sas);
+#ifdef _WIN32
+        if (getpeername(c->winSocket, (struct sockaddr *) &sas, (int *)&var) == SOCKET_ERROR) {
+#else
         if (getpeername(c->fd, (struct sockaddr *) &sas, (socklen_t *) &var) < 0) {
+#endif
                 var = sprintf(scratch, "[%d]GETPEERNAME ERROR: %s\n", connindex, strerror(errno));
                 send_proc(errConn, scratch, var);
                 return -1;
