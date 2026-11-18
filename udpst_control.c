@@ -2165,7 +2165,7 @@ int open_outputfile(int connindex) {
         // Open output file
         //
         if ((c->outputFPtr = fopen(fname, "w")) == NULL) {
-                return sprintf(scratch, "FOPEN ERROR: <%.*s> %s\n", NAME_MAX, fname, strerror(errno));
+                return sprintf(scratch, "FOPEN ERROR: <%.*s> %s\n", (int) (sizeof(fname) - 1), fname, strerror(errno));
         }
 
         //
