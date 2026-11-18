@@ -90,22 +90,34 @@ jobs:
           if-no-files-found: ignore
 
   win32-full-link-probe:
-    name: Windows x64 full executable link diagnostics
+    name: Windows x64 executable build and smoke test
     runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
       - name: Configure MSVC x64
         run: cmake -S . -B build-link-probe -A x64
-      - name: Probe full executable link (diagnostic)
+      - name: Build full Windows executable (strict)
         shell: pwsh
         run: |
           cmake --build build-link-probe --config Release --target udpst_win32_link_probe *> link-errors.log
           $status = $LASTEXITCODE
           Get-Content link-errors.log
-          if ($status -ne 0) {
-            Write-Host "::warning::Full Windows executable link needs further porting; see uploaded diagnostics."
-          }
-          exit 0
+          exit $status
+      - name: Smoke test Windows executable
+        shell: pwsh
+        run: |
+          $exe = Join-Path $PWD "build-link-probe/Release/udpst.exe"
+          if (-not (Test-Path $exe)) { throw "udpst.exe missing after successful build" }
+          & $exe -h *> smoke-help.log
+          $status = $LASTEXITCODE
+          Get-Content smoke-help.log
+          if ($status -ne 0) { throw "udpst.exe -h failed with exit code $status" }
+      - name: Upload native Windows executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: udpst-windows-x64
+          path: build-link-probe/Release/udpst.exe
+          if-no-files-found: error
       - name: Upload linker diagnostics
         if: always()
         uses: actions/upload-artifact@v4
