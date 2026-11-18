@@ -486,11 +486,17 @@ int main(int argc, char **argv) {
         //
         // Open epoll file descriptor to process I/O events
         //
+#ifndef _WIN32
         if ((repo.epollFD = epoll_create1(0)) < 0) {
                 var = sprintf(scratch, "ERROR: Unable to open epoll file descriptor\n");
                 var = write(outputfd, scratch, var);
                 return STATUS_INIT_ERRBASE + ERROR_INIT_GENERIC;
         }
+#else
+        /* Windows sockets are monitored through WSAPoll, not an epoll FD.
+         * Keep the sentinel until the connection event loop is ported. */
+        repo.epollFD = -1;
+#endif
 
         //
         // Set standard FDs as non-blocking
@@ -838,8 +844,10 @@ int main(int argc, char **argv) {
         //
         if (logfilefd >= 0)
                 close(logfilefd);
+#ifndef _WIN32
         if (repo.epollFD >= 0)
                 close(repo.epollFD);
+#endif
         if (repo.intfFD >= 0)
                 close(repo.intfFD);
         if (repo.intfFDAlt >= 0)
