@@ -267,7 +267,7 @@ int send_setupreq(int connindex, int mcIndex, int serverIndex) {
                          * unavailable on Windows. Fail explicitly instead of
                          * silently testing over the wrong network adapter. */
                         var = sprintf(scratch,
-                                      "ERROR: Explicit interface selection is not yet supported on Windows\\n");
+                                      "ERROR: Explicit interface selection is not yet supported on Windows\n");
                         send_proc(errConn, scratch, var);
                         return -1;
 #else
