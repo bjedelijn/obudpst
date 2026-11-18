@@ -34,11 +34,35 @@ static int udp_loopback_ipv4(void)
 
     if (udpst_win32_wait_readable(receiver, 0) != 0)
         goto done;
+    {
+        WSAPOLLFD entries[2];
+        memset(entries, 0, sizeof(entries));
+        entries[0].fd = receiver;
+        entries[0].events = POLLRDNORM;
+        entries[1].fd = sender;
+        entries[1].events = POLLWRNORM;
+        if (udpst_win32_poll_udp(entries, 2, 1000) < 1 ||
+            !(entries[1].revents & POLLWRNORM) ||
+            (entries[0].revents & POLLRDNORM))
+            goto done;
+    }
     if (udpst_win32_wait_writable(sender, 1000) != 1)
         goto done;
     if (sendto(sender, payload, (int)sizeof(payload), 0,
                (const struct sockaddr *)&address, addrlen) != (int)sizeof(payload))
         goto done;
+    {
+        WSAPOLLFD entries[2];
+        memset(entries, 0, sizeof(entries));
+        entries[0].fd = receiver;
+        entries[0].events = POLLRDNORM;
+        entries[1].fd = sender;
+        entries[1].events = POLLRDNORM;
+        if (udpst_win32_poll_udp(entries, 2, 1000) < 1 ||
+            !(entries[0].revents & POLLRDNORM) ||
+            (entries[1].revents & POLLRDNORM))
+            goto done;
+    }
     if (udpst_win32_wait_readable(receiver, 1000) != 1)
         goto done;
     if (recvfrom(receiver, buffer, (int)sizeof(buffer), 0, NULL, NULL) !=
