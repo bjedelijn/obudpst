@@ -495,6 +495,9 @@ int main(int argc, char **argv) {
         //
         // Set standard FDs as non-blocking
         //
+#ifndef _WIN32
+        /* POSIX fcntl() applies to Unix file descriptors. Windows CRT
+         * console handles are not Winsock sockets and cannot use it. */
         pristatus = 0;
         var       = fcntl(STDIN_FILENO, F_GETFL, 0);
         pristatus += fcntl(STDIN_FILENO, F_SETFL, var | O_NONBLOCK);
@@ -508,6 +511,8 @@ int main(int argc, char **argv) {
                 appstatus = STATUS_INIT_ERRBASE + ERROR_INIT_GENERIC;
                 sig_exit  = TRUE;
         }
+
+#endif /* !_WIN32 */
 
         //
         // Create default connection for console, log file or null output
