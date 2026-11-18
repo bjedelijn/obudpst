@@ -119,4 +119,24 @@ static int udpst_win32_wait_writable(SOCKET socket_handle, unsigned int timeout_
     return ready > 0 && FD_ISSET(socket_handle, &write_set) ? 1 : 0;
 }
 
+
+/*
+ * Resolve a UDP destination for either IPv4 or IPv6.
+ * Caller owns *result and must release it with freeaddrinfo().
+ * No network traffic is sent by this operation.
+ */
+static int udpst_win32_resolve_udp(const char *hostname, const char *service,
+                                   struct addrinfo **result)
+{
+    struct addrinfo hints;
+    if (hostname == NULL || service == NULL || result == NULL)
+        return EAI_FAIL;
+    *result = NULL;
+    ZeroMemory(&hints, sizeof(hints));
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_DGRAM;
+    hints.ai_protocol = IPPROTO_UDP;
+    return getaddrinfo(hostname, service, &hints, result);
+}
+
 #endif /* UDPST_WIN32_PLATFORM_H */
