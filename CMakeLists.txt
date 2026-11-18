@@ -111,7 +111,11 @@ if(WIN32)
     # Opt-in compile probe for the actual main program; not an executable.
     add_library(udpst_win32_main_diagnostics OBJECT EXCLUDE_FROM_ALL udpst.c)
     target_compile_definitions(udpst_win32_main_diagnostics PRIVATE
-        _WIN32_WINNT=0x0602 WIN32_LEAN_AND_MEAN)
+        _WIN32_WINNT=0x0602 WIN32_LEAN_AND_MEAN DISABLE_INT_TIMER)
+    # udpst.c uses DISABLE_INT_TIMER directly in preprocessor guards.
+    # config.h is generated but not included by that translation unit;
+    # defining the macro on this target actually excludes POSIX SIGALRM
+    # and setitimer code in MSVC diagnostics.
     message(STATUS "Windows sending-rate module build enabled; full UDPST client not yet ported")
 else()
     # Define a library called udpst_core containing all core functionality.
