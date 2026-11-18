@@ -1703,6 +1703,9 @@ int service_actresp(int connindex) {
 int sock_mgmt(int connindex, char *host, int port, char *ip, int action) {
         register struct connection *c = &conn[connindex];
         int i, var, fd;
+#ifdef _WIN32
+        SOCKET native_socket = INVALID_SOCKET;
+#endif
         BOOL hostisaddr = FALSE;
         char addrstr[INET6_ADDR_STRLEN], portstr[8];
         struct addrinfo hints, *res = NULL, *ai;
@@ -1797,6 +1800,31 @@ int sock_mgmt(int connindex, char *host, int port, char *ip, int action) {
                         //
                         // Obtain socket, restrict to INET6 if needed, and bind
                         //
+#ifdef _WIN32
+                        native_socket = socket(ai->ai_family, ai->ai_socktype, ai->ai_protocol);
+                        if (native_socket == INVALID_SOCKET) {
+                                var = sprintf(scratch, "SOCKET ERROR: WSA %d (%s:%d)\n", WSAGetLastError(), host, port);
+                                continue;
+                        }
+                        if (ai->ai_family == AF_INET6) {
+                                i = conf.ipv6Only ? 1 : 0;
+                                if (setsockopt(native_socket, IPPROTO_IPV6, IPV6_V6ONLY,
+                                               (const char *)&i, sizeof(i)) == SOCKET_ERROR) {
+                                        var = sprintf(scratch, "IPV6_V6ONLY ERROR: WSA %d\n", WSAGetLastError());
+                                        closesocket(native_socket);
+                                        native_socket = INVALID_SOCKET;
+                                        continue;
+                                }
+                        }
+                        if (bind(native_socket, ai->ai_addr, (int)ai->ai_addrlen) == SOCKET_ERROR) {
+                                var = sprintf(scratch, "BIND ERROR: WSA %d (%s:%d)\n", WSAGetLastError(), host, port);
+                                closesocket(native_socket);
+                                native_socket = INVALID_SOCKET;
+                                continue;
+                        }
+                        /* Preserve the entire pointer-sized handle, never store it in fd. */
+                        c->winSocket = native_socket;
+#else
                         if ((fd = socket(ai->ai_family, ai->ai_socktype, ai->ai_protocol)) == -1) {
                                 var = sprintf(scratch, "SOCKET ERROR: %s (%s:%d)\n", strerror(errno), host, port);
                                 continue;
@@ -1821,6 +1849,7 @@ int sock_mgmt(int connindex, char *host, int port, char *ip, int action) {
                                 continue;
                         }
                         c->fd      = fd;
+#endif
                         c->subType = SOCK_DGRAM;
                         c->state   = S_BOUND;
                         var        = 0;
