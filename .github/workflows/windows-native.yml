@@ -46,23 +46,19 @@ jobs:
           if-no-files-found: ignore
 
   win32-control-data-diagnostic:
-    name: Windows x64 control/data port diagnostics (expected failures)
+    name: Windows x64 control/data compilation (strict)
     runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
       - name: Configure MSVC
         run: cmake -S . -B build-port-diagnostics -A x64
-      - name: Compile original control/data modules (work in progress)
-        id: compile
+      - name: Compile original control/data modules (strict)
         shell: pwsh
         run: |
           cmake --build build-port-diagnostics --config Release --target udpst_win32_port_diagnostics *> port-errors.log
           $status = $LASTEXITCODE
           Get-Content port-errors.log
-          if ($status -ne 0) {
-            Write-Host "::warning::Control/data Windows port remains incomplete; see port-errors artifact."
-          }
-          exit 0
+          exit $status
       - name: Upload MSVC portability errors
         if: always()
         uses: actions/upload-artifact@v4
