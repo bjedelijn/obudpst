@@ -546,8 +546,10 @@ static void _sendmmsg_burst(int connindex, int totalburst, int burstsize, unsign
 //
 static void _sendmsg_burst(int connindex, int totalburst, int burstsize, unsigned int payload, unsigned int addon) {
         register struct connection *c = &conn[connindex];
+#ifndef _WIN32
         struct msghdr msg;
         struct iovec iov;
+#endif
         unsigned int uvar, rttrd = 0;
         int i, j, var, senderrno;
         struct loadHdr *lHdr;
@@ -564,7 +566,9 @@ static void _sendmsg_burst(int connindex, int totalburst, int burstsize, unsigne
         //
         // Prepare send structures
         //
+#ifndef _WIN32
         memset((void *) &msg, 0, sizeof(struct msghdr));
+#endif
         if (c->randPayload) {
                 lHdr = (struct loadHdr *) repo.sndBufRand;
         } else {
@@ -590,18 +594,26 @@ static void _sendmsg_burst(int connindex, int totalburst, int burstsize, unsigne
                 //
                 // Setup corresponding message structure
                 //
+#ifndef _WIN32
                 iov.iov_base   = (void *) lHdr;
                 iov.iov_len    = (size_t) uvar;
                 msg.msg_iov    = &iov;
                 msg.msg_iovlen = 1;
+#endif
 
                 //
                 // Send a single message of our burst with a system call
                 //
                 // NOTE: Certain error conditions are expected when overloading an interface
                 //
+#ifdef _WIN32
+                /* Connected UDP sockets: one send() corresponds to one datagram. */
+                var       = send((SOCKET)(uintptr_t)c->fd, (const char *)lHdr, (int)uvar, 0);
+                senderrno = (var == SOCKET_ERROR) ? WSAGetLastError() : 0;
+#else
                 var       = sendmsg(c->fd, &msg, 0);
                 senderrno = errno;
+#endif
                 if (conf.seqNumAdjust && var <= 0) { // Adjust sequence number to correct for datagram not accepted
                         c->lpduSeqNo--;
                 }
@@ -611,7 +623,13 @@ static void _sendmsg_burst(int connindex, int totalburst, int burstsize, unsigne
                         _update_send_ps(connindex, 1, j, 0, uvar);
                 }
                 if (!conf.errSuppress) {
-                        if (var < 0 && senderrno != EAGAIN) {
+                        if (var < 0
+#ifdef _WIN32
+                            && senderrno != WSAEWOULDBLOCK
+#else
+                            && senderrno != EAGAIN
+#endif
+                        ) {
                                 //
                                 // An error of EAGAIN (Resource temporarily unavailable) indicates the send buffer is full
                                 //
