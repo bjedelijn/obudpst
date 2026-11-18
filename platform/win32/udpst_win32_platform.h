@@ -142,6 +142,29 @@ static int udpst_win32_wait_writable(SOCKET socket_handle, unsigned int timeout_
 
 
 /*
+ * Wait for multiple UDP sockets without narrowing SOCKET to int.
+ * The caller retains the WSAPOLLFD array; revents are updated in place.
+ * Returns the number of ready entries, 0 on timeout, or SOCKET_ERROR.
+ * A negative timeout waits indefinitely. The caller must inspect revents
+ * for POLLERR/POLLHUP/POLLNVAL before consuming a readable socket.
+ *
+ * This is a Winsock building block, not a replacement for UDPST's
+ * connection-index registration and console event handling.
+ */
+static int udpst_win32_poll_udp(WSAPOLLFD *entries, ULONG count, int timeout_ms)
+{
+    ULONG i;
+    if (entries == NULL || count == 0)
+        return SOCKET_ERROR;
+    for (i = 0; i < count; ++i) {
+        if (entries[i].fd == INVALID_SOCKET)
+            return SOCKET_ERROR;
+        entries[i].revents = 0;
+    }
+    return WSAPoll(entries, count, timeout_ms);
+}
+
+/*
  * Resolve a UDP destination for either IPv4 or IPv6.
  * Caller owns *result and must release it with freeaddrinfo().
  * No network traffic is sent by this operation.
