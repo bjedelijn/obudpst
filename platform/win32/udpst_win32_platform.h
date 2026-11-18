@@ -75,4 +75,48 @@ static int udpst_win32_monotonic_ns(uint64_t *ns)
     return 0;
 }
 
+
+/*
+ * Wait for a UDP socket to become readable. select() accepts SOCKET values
+ * directly on Windows, unlike POSIX integer file descriptors.
+ * Returns 1 (ready), 0 (timeout), or -1 (socket error).
+ */
+static int udpst_win32_wait_readable(SOCKET socket_handle, unsigned int timeout_ms)
+{
+    fd_set read_set;
+    struct timeval timeout;
+    int ready;
+    if (socket_handle == INVALID_SOCKET)
+        return -1;
+    FD_ZERO(&read_set);
+    FD_SET(socket_handle, &read_set);
+    timeout.tv_sec = (long)(timeout_ms / 1000U);
+    timeout.tv_usec = (long)((timeout_ms % 1000U) * 1000U);
+    ready = select(0, &read_set, NULL, NULL, &timeout);
+    if (ready == SOCKET_ERROR)
+        return -1;
+    return ready > 0 && FD_ISSET(socket_handle, &read_set) ? 1 : 0;
+}
+
+/*
+ * Equivalent wait for a socket to become writable. This is a foundation
+ * for the future Windows event loop; it is not an epoll replacement yet.
+ */
+static int udpst_win32_wait_writable(SOCKET socket_handle, unsigned int timeout_ms)
+{
+    fd_set write_set;
+    struct timeval timeout;
+    int ready;
+    if (socket_handle == INVALID_SOCKET)
+        return -1;
+    FD_ZERO(&write_set);
+    FD_SET(socket_handle, &write_set);
+    timeout.tv_sec = (long)(timeout_ms / 1000U);
+    timeout.tv_usec = (long)((timeout_ms % 1000U) * 1000U);
+    ready = select(0, NULL, &write_set, NULL, &timeout);
+    if (ready == SOCKET_ERROR)
+        return -1;
+    return ready > 0 && FD_ISSET(socket_handle, &write_set) ? 1 : 0;
+}
+
 #endif /* UDPST_WIN32_PLATFORM_H */
