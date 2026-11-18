@@ -665,8 +665,15 @@ int main(int argc, char **argv) {
                 // Await ready FD(s) OR an alarm signal interrupt
                 //
                 var = -1;
+#ifdef _WIN32
+                /* Windows has no POSIX interval timer here. Poll at a bounded
+                 * cadence so timers advance without a busy-spin or an
+                 * indefinitely blocked WSAPoll call. */
+                var = 10;
+#else
                 if (sig_alrm > 0)
                         var = 0; // Return immediately if alarm was already received
+#endif
 #ifdef _WIN32
                 {
                         ULONG poll_count = 0;
@@ -681,9 +688,14 @@ int main(int argc, char **argv) {
                                 win_poll_entries[poll_count].connection_index = (unsigned int)poll_index;
                                 ++poll_count;
                         }
-                        readyfds = poll_count ?
-                                udpst_win32_poll_connections(win_poll_entries, poll_count, var,
-                                                              win_ready_indices, MAX_EPOLL_EVENTS) : 0;
+                        if (poll_count != 0) {
+                                readyfds = udpst_win32_poll_connections(win_poll_entries, poll_count, var,
+                                                                          win_ready_indices, MAX_EPOLL_EVENTS);
+                        } else {
+                                /* WSAPoll rejects an empty socket set. */
+                                Sleep((DWORD)var);
+                                readyfds = 0;
+                        }
                 }
 #else
                 readyfds = epoll_wait(repo.epollFD, epoll_events, MAX_EPOLL_EVENTS, var);
