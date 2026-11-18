@@ -111,6 +111,16 @@
 #include <fcntl.h>
 #include <io.h>
 #include <signal.h>
+/* CRT descriptors are used for console/file connections, not Winsock SOCKETs. */
+#ifndef STDIN_FILENO
+#define STDIN_FILENO 0
+#endif
+#ifndef STDOUT_FILENO
+#define STDOUT_FILENO 1
+#endif
+#ifndef STDERR_FILENO
+#define STDERR_FILENO 2
+#endif
 #include <sys/stat.h>
 #ifdef AUTH_KEY_ENABLE
 #include <openssl/hmac.h>
