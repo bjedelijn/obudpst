@@ -134,6 +134,13 @@
 #endif
 #endif
 
+#ifdef _WIN32
+/* Keep UTC scheduler timestamps consistent with the Windows FILETIME adapter. */
+#define UDPST_UPDATE_SYSTEM_CLOCK() udpst_win32_utc_now(&repo.systemClock)
+#else
+#define UDPST_UPDATE_SYSTEM_CLOCK() clock_gettime(CLOCK_REALTIME, &repo.systemClock)
+#endif
+
 //----------------------------------------------------------------------------
 //
 // Internal function prototypes
@@ -298,7 +305,7 @@ int main(int argc, char **argv) {
         tspeccpy(&repo.startTime, &repo.systemClock);
         srand((unsigned int) repo.systemClock.tv_nsec);
 #else
-        clock_gettime(CLOCK_REALTIME, &repo.systemClock);
+        UDPST_UPDATE_SYSTEM_CLOCK();
         tspeccpy(&repo.startTime, &repo.systemClock);
         srandom((unsigned int) repo.systemClock.tv_nsec);
 #endif
@@ -424,7 +431,7 @@ int main(int argc, char **argv) {
                 var = write(outputfd, scratch, var);
                 return STATUS_INIT_ERRBASE + ERROR_INIT_GENERIC;
         }
-        clock_gettime(CLOCK_REALTIME, &repo.systemClock); // Reinitialize local copy of system time clock
+        UDPST_UPDATE_SYSTEM_CLOCK(); // Reinitialize local copy of system time clock
 #endif
 
         //
@@ -689,7 +696,7 @@ int main(int argc, char **argv) {
                                         //
                                         // Update local copy of system time clock
                                         //
-                                        clock_gettime(CLOCK_REALTIME, &repo.systemClock);
+                                        UDPST_UPDATE_SYSTEM_CLOCK();
 
                                         //
                                         // Execute primary and secondary actions
@@ -738,7 +745,7 @@ int main(int argc, char **argv) {
                         //
                         // Update local copy of system time clock
                         //
-                        clock_gettime(CLOCK_REALTIME, &repo.systemClock);
+                        UDPST_UPDATE_SYSTEM_CLOCK();
 
                         //
                         // Check each connection for timer expiry
@@ -808,7 +815,7 @@ int main(int argc, char **argv) {
                                         }
                                 }
                                 if (var2 > 0) { // Update local copy of system time clock if work was done
-                                        clock_gettime(CLOCK_REALTIME, &repo.systemClock);
+                                        UDPST_UPDATE_SYSTEM_CLOCK();
                                 }
                         }
 
