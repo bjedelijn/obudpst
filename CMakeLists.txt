@@ -94,7 +94,15 @@ add_library(udpst_core udpst_control.c udpst_data.c udpst_srates.c cJSON.c)
 set(libraries udpst_core ${libraries})
 
 add_executable(udpst udpst.c)
-target_link_libraries(udpst ${libraries} m)
+# Windows uses Winsock2; the Unix math library is not available on MSVC.
+# This is build-system preparation: the source still needs a Windows port.
+if(WIN32)
+    target_compile_definitions(udpst_core PRIVATE _WIN32_WINNT=0x0602 WIN32_LEAN_AND_MEAN)
+    target_compile_definitions(udpst PRIVATE _WIN32_WINNT=0x0602 WIN32_LEAN_AND_MEAN)
+    target_link_libraries(udpst ws2_32 ${libraries})
+else()
+    target_link_libraries(udpst ${libraries} m)
+endif()
 
 # For some reason Ninja sometimes faces a stupid error which is fixed by
 # the following
