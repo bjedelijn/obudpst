@@ -866,11 +866,15 @@ int main(int argc, char **argv) {
                 free(repo.psBuffer);
 
         //
-        // Stop system timer
+        // Stop POSIX interval timer and restore POSIX descriptor flags.
+        // Windows uses neither setitimer nor fcntl on console handles.
         //
+#ifndef _WIN32
+#ifndef DISABLE_INT_TIMER
         timerclear(&itime.it_interval);
         timerclear(&itime.it_value);
         setitimer(ITIMER_REAL, &itime, NULL);
+#endif
 
         //
         // Reset standard FDs to normal
@@ -881,6 +885,7 @@ int main(int argc, char **argv) {
         fcntl(STDOUT_FILENO, F_SETFL, var & ~O_NONBLOCK);
         var = fcntl(STDERR_FILENO, F_GETFL, 0);
         fcntl(STDERR_FILENO, F_SETFL, var & ~O_NONBLOCK);
+#endif /* !_WIN32 */
 
         return appstatus;
 }
