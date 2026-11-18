@@ -2831,10 +2831,16 @@ int recv_proc(int connindex) {
         // Validate status
         //
         if (repo.rcvDataSize < 0) {
+#ifdef _WIN32
+                /* Winsock errors are thread-local and are not stored in errno. */
+                int recv_error = c->type == T_UDP ? WSAGetLastError() : errno;
+#else
+                int recv_error = errno;
+#endif
                 repo.rcvDataSize = 0;
-                if ((var = receive_trunc(errno, recvsize, RCV_HEADER_SIZE)) > 0) {
+                if ((var = receive_trunc(recv_error, recvsize, RCV_HEADER_SIZE)) > 0) {
                         repo.rcvDataSize = var;
-                } else if ((var = socket_error(connindex, errno, "RECVMMSG/RECV/RECVFROM")) > 0) {
+                } else if ((var = socket_error(connindex, recv_error, "RECVMMSG/RECV/RECVFROM")) > 0) {
                         if (!conf.errSuppress) {
                                 send_proc(errConn, scratch, var);
                         }
@@ -2925,7 +2931,12 @@ int send_proc(int connindex, char *sendbuffer, int sendsize) {
         // Validate status
         //
         if (actual < 0) {
-                if ((var = socket_error(connindex, errno, "SEND/SENDTO")) > 0) {
+#ifdef _WIN32
+                int send_error = c->type == T_UDP ? WSAGetLastError() : errno;
+#else
+                int send_error = errno;
+#endif
+                if ((var = socket_error(connindex, send_error, "SEND/SENDTO")) > 0) {
                         if (!conf.errSuppress) {
                                 send_proc(errConn, scratch, var);
                         }
