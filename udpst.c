@@ -183,7 +183,13 @@ struct repository repo;                       // Repository of global data
 struct connection *conn;                      // Connection table (array)
 static volatile sig_atomic_t sig_alrm = 0;    // Interrupt indicator
 static volatile sig_atomic_t sig_exit = 0;    // Interrupt indicator
+#ifdef _WIN32
+/* WSAPoll returns connection indices without narrowing SOCKET handles. */
+static udpst_win32_poll_entry win_poll_entries[MAX_EPOLL_EVENTS];
+static unsigned int win_ready_indices[MAX_EPOLL_EVENTS];
+#else
 struct epoll_event epoll_events[MAX_EPOLL_EVENTS];
+#endif
 char *boolText[]    = {"Disabled", "Enabled"};
 char *rateAdjAlgo[] = {"B", "C"}; // Aligned to CHTA_RA_ALGO_x
 //
@@ -661,7 +667,27 @@ int main(int argc, char **argv) {
                 var = -1;
                 if (sig_alrm > 0)
                         var = 0; // Return immediately if alarm was already received
+#ifdef _WIN32
+                {
+                        ULONG poll_count = 0;
+                        int poll_index;
+                        for (poll_index = 0; poll_index <= repo.maxConnIndex &&
+                             poll_count < MAX_EPOLL_EVENTS; ++poll_index) {
+                                if (conn[poll_index].type != T_UDP ||
+                                    conn[poll_index].state == S_FREE ||
+                                    conn[poll_index].winSocket == INVALID_SOCKET)
+                                        continue;
+                                win_poll_entries[poll_count].socket_handle = conn[poll_index].winSocket;
+                                win_poll_entries[poll_count].connection_index = (unsigned int)poll_index;
+                                ++poll_count;
+                        }
+                        readyfds = poll_count ?
+                                udpst_win32_poll_connections(win_poll_entries, poll_count, var,
+                                                              win_ready_indices, MAX_EPOLL_EVENTS) : 0;
+                }
+#else
                 readyfds = epoll_wait(repo.epollFD, epoll_events, MAX_EPOLL_EVENTS, var);
+#endif
 
                 //
                 // Process FD(s)
@@ -683,14 +709,23 @@ int main(int argc, char **argv) {
                                         //
                                         // Extract connection from user data
                                         //
+#ifdef _WIN32
+                                        i = (int) win_ready_indices[j];
+#else
                                         i = (int) epoll_events[j].data.u32;
+#endif
                                         if (i < 0 || i > repo.maxConnIndex) {
                                                 if (fdpass == 0) {
                                                         var = sprintf(scratch, "ERROR: Invalid epoll_wait user data %d\n", i);
                                                         send_proc(errConn, scratch, var);
                                                 }
                                                 continue;
+#ifdef _WIN32
+                                        } else if (conn[i].state == S_FREE ||
+                                                   conn[i].winSocket == INVALID_SOCKET) {
+#else
                                         } else if (conn[i].fd < 0) {
+#endif
                                                 if (fdpass == 0) {
                                                         var = sprintf(scratch, "[%d]ERROR: Invalid fd (%d) from epoll_wait\n", i,
                                                                       conn[i].fd);
