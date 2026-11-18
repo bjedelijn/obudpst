@@ -111,6 +111,7 @@
 #include <fcntl.h>
 #include <io.h>
 #include <signal.h>
+#include "platform/win32/udpst_win32_getopt.h"
 /* CRT descriptors are used for console/file connections, not Winsock SOCKETs. */
 #ifndef STDIN_FILENO
 #define STDIN_FILENO 0
