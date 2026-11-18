@@ -42,6 +42,12 @@
 #ifdef __linux__
 #include "config.h"
 #endif /* __linux__ */
+#ifdef _WIN32
+/* Windows uses adapter indices/names rather than POSIX IFNAMSIZ. */
+#ifndef IFNAMSIZ
+#define IFNAMSIZ 256
+#endif
+#endif
 #include "udpst_common.h"
 
 //----------------------------------------------------------------------------
