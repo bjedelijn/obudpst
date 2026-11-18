@@ -228,6 +228,15 @@ int main(int argc, char **argv) {
         //
         // Execute as daemon if requested
         //
+#ifdef _WIN32
+        /* POSIX fork/setsid daemonization has no Windows equivalent.
+         * Reject this mode rather than silently ignoring the request. */
+        if (conf.isDaemon) {
+                var = sprintf(scratch, "ERROR: Daemon mode is unsupported on Windows; run as a console process.\n");
+                _write(outputfd, scratch, (unsigned int)var);
+                return STATUS_CONF_ERRBASE + ERROR_CONF_GENERIC;
+        }
+#else
         if (conf.isDaemon) {
                 //
                 // Open log file before child creation
@@ -270,6 +279,7 @@ int main(int argc, char **argv) {
                                 close(i);
                 }
         }
+#endif /* !_WIN32 */
 
         //
         // Initialize local copy of system time clock and seed RNG
