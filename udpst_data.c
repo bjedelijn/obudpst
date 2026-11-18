@@ -122,6 +122,7 @@
 #include <math.h>
 #include <fcntl.h>
 #include <io.h>
+#include <sys/stat.h> /* _S_IREAD, _S_IWRITE */
 #else
 #include "../udpst_data_alt1.h"
 #endif
@@ -2883,9 +2884,17 @@ int send_proc(int connindex, char *sendbuffer, int sendsize) {
         } else {
                 var = c->fd;
                 if ((c->type == T_CONSOLE) || (c->type == T_NULL)) {
+#ifdef _WIN32
+                        var = _fileno(stdout);
+#else
                         var = STDOUT_FILENO;
+#endif
                 }
+#ifdef _WIN32
+                actual = _write(var, sendbuffer, (unsigned int)sendsize);
+#else
                 actual = write(var, sendbuffer, sendsize);
+#endif
         }
 
         //
