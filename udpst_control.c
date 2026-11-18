@@ -2492,9 +2492,10 @@ int kdf_hmac_sha256(char *Kin, uint32_t authUnixTime,
                     unsigned char *cAuthKey,   // Client key
                     unsigned char *sAuthKey) { // Server key
 
-        int var, keylen = SHA256_KEY_LEN * 2;
+        int var;
+        const int keylen = SHA256_KEY_LEN * 2;
         char context[16];
-        unsigned char *keyptr, keybuf[keylen];
+        unsigned char *keyptr, keybuf[SHA256_KEY_LEN * 2];
         EVP_KDF *kdf      = NULL;
         EVP_KDF_CTX *kctx = NULL;
         OSSL_PARAM params[16], *p = params;
