@@ -223,6 +223,15 @@ int main(int argc, char **argv) {
         struct perfStatsMaximums *psM = &repo.psMaximums;
         struct perfStatsAverages *psA = &repo.psAverages;
 
+#ifdef _WIN32
+        /* proc_parameters performs address resolution: Winsock must be ready first. */
+        if (udpst_win32_net_init() != 0) {
+                fprintf(stderr, "ERROR: WSAStartup failed (%d)\\n", WSAGetLastError());
+                return STATUS_INIT_ERRBASE + ERROR_INIT_GENERIC;
+        }
+        atexit(udpst_win32_net_cleanup);
+#endif
+
         //
         // Sanity check that rate adjustment algorithm identifiers align with protocol
         //
