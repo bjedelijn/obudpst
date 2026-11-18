@@ -100,7 +100,25 @@
 #include <openssl/x509.h>
 #endif
 #else
+#ifdef _WIN32
+#include "platform/win32/udpst_win32_platform.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <errno.h>
+#include <limits.h>
+#include <time.h>
+#include <fcntl.h>
+#include <io.h>
+#include <signal.h>
+#include <sys/stat.h>
+#ifdef AUTH_KEY_ENABLE
+#include <openssl/hmac.h>
+#include <openssl/x509.h>
+#endif
+#else
 #include "../udpst_alt1.h"
+#endif
 #endif
 //
 #include "cJSON.h"
@@ -111,7 +129,9 @@
 #include "udpst_data.h"
 #include "udpst_srates.h"
 #ifndef __linux__
+#ifndef _WIN32
 #include "../udpst_alt2.h"
+#endif
 #endif
 
 //----------------------------------------------------------------------------
