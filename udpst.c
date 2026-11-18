@@ -457,6 +457,16 @@ int main(int argc, char **argv) {
         //
         // Set exit signal handler
         //
+#ifdef _WIN32
+        /* MSVC CRT supports SIGINT and SIGTERM, but not POSIX sigaction,
+         * SIGQUIT or SIGTSTP.  Console service handling is separate work. */
+        if (signal(SIGINT, signal_exit) == SIG_ERR ||
+            signal(SIGTERM, signal_exit) == SIG_ERR) {
+                var = sprintf(scratch, "ERROR: Unable to install Windows CRT exit signal handlers\n");
+                _write(outputfd, scratch, (unsigned int)var);
+                return STATUS_INIT_ERRBASE + ERROR_INIT_GENERIC;
+        }
+#else
         saction.sa_handler = signal_exit;
         sigemptyset(&saction.sa_mask);
         saction.sa_flags = 0;
@@ -470,6 +480,8 @@ int main(int argc, char **argv) {
                 var = write(outputfd, scratch, var);
                 return STATUS_INIT_ERRBASE + ERROR_INIT_GENERIC;
         }
+
+#endif /* !_WIN32 */
 
         //
         // Open epoll file descriptor to process I/O events
