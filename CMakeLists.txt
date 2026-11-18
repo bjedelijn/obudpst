@@ -102,6 +102,10 @@ if(WIN32)
         udpst_control.c udpst_data.c)
     target_compile_definitions(udpst_win32_port_diagnostics PRIVATE
         _WIN32_WINNT=0x0602 WIN32_LEAN_AND_MEAN)
+    # Opt-in compile probe for the actual main program; not an executable.
+    add_library(udpst_win32_main_diagnostics OBJECT EXCLUDE_FROM_ALL udpst.c)
+    target_compile_definitions(udpst_win32_main_diagnostics PRIVATE
+        _WIN32_WINNT=0x0602 WIN32_LEAN_AND_MEAN)
     message(STATUS "Windows sending-rate module build enabled; full UDPST client not yet ported")
 else()
     # Define a library called udpst_core containing all core functionality.
