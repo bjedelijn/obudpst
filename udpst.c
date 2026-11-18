@@ -122,6 +122,10 @@
 #ifndef STDERR_FILENO
 #define STDERR_FILENO 2
 #endif
+/* NAME_MAX is only used to limit filenames printed in error messages. */
+#ifndef NAME_MAX
+#define NAME_MAX 255
+#endif
 #include <sys/stat.h>
 #ifdef AUTH_KEY_ENABLE
 #include <openssl/hmac.h>
