@@ -148,10 +148,8 @@ int adjust_sending_rate(int);
 int output_currate(int);
 int output_maxrate(int);
 double get_rate(int, struct subIntStats *, int);
-#ifdef __linux__
 int socket_error(int, int, char *);
 int receive_trunc(int, int, int);
-#endif
 void sis_copy(struct subIntStats *, struct subIntStats *, BOOL);
 void output_warning(int, int);
 void upd_intf_stats(BOOL);
@@ -217,7 +215,11 @@ static void _populate_header(struct loadHdr *lHdr, struct connection *c, unsigne
 // Randomize payload of datagram (via single call of random())
 //
 static void _randomize_payload(char *buffer, unsigned int length) {
+#ifdef _WIN32
+        register long int rvar = rand(); // Windows CRT; replace with stronger generator if required
+#else
         register long int rvar = random(); // Obtain random value (0 - RAND_MAX)
+#endif
         register long int *b, *rd = (long int *) repo.randData;
         register unsigned int len = length, i;
 
@@ -2927,7 +2929,6 @@ int send_proc(int connindex, char *sendbuffer, int sendsize) {
         }
         return actual;
 }
-#ifdef __linux__
 //----------------------------------------------------------------------------
 //
 // Check for send or receive socket error (exclude operation would block indications)
@@ -2937,8 +2938,13 @@ int send_proc(int connindex, char *sendbuffer, int sendsize) {
 int socket_error(int connindex, int error, char *optext) {
         int var = 0;
 
+#ifdef _WIN32
+        if (error != WSAEWOULDBLOCK) {
+                var = sprintf(scratch, "[%d]%s WINSOCK ERROR: %d\\n", connindex, optext, error);
+#else
         if (error != EWOULDBLOCK && error != EAGAIN) {
                 var = sprintf(scratch, "[%d]%s ERROR: %s\n", connindex, optext, strerror(error));
+#endif
         }
         return var;
 }
@@ -2949,12 +2955,15 @@ int socket_error(int connindex, int error, char *optext) {
 int receive_trunc(int error, int requested, int expected) {
         int var = 0;
 
+#ifdef _WIN32
+        if (error == WSAEMSGSIZE && requested == expected) {
+#else
         if (error == EMSGSIZE && requested == expected) {
+#endif
                 var = requested;
         }
         return var;
 }
-#endif
 //----------------------------------------------------------------------------
 //
 // Copy sending rate structure with proper network byte order
@@ -3191,7 +3200,11 @@ void upd_intf_stats(BOOL initialize) {
 // Return a uniformly distributed random number between min and max
 //
 int getuniform(int min, int max) {
+#ifdef _WIN32
+        int rvar = rand();
+#else
         int rvar = (int) random(); // Obtain random value (0 - RAND_MAX)
+#endif
 
         return (rvar % (max - min + 1)) + min;
 }
