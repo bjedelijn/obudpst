@@ -203,8 +203,14 @@ void init_conn(int connindex, BOOL cleanup) {
         if (cleanup) {
                 if (connindex == repo.maxConnIndex) {
                         for (i = connindex - 1; i >= 0; i--) {
+#ifdef _WIN32
+                                /* UDP sockets are tracked in winSocket, not fd. */
+                                if (conn[i].state == S_FREE)
+                                        continue;
+#else
                                 if (conn[i].fd == -1)
                                         continue;
+#endif
                                 repo.maxConnIndex = i;
                                 break;
                         }
@@ -1886,7 +1892,12 @@ int new_conn(int activefd, char *host, int port, int type, int (*priaction)(int)
         //
         fd = activefd;
         for (i = 0; i < conf.maxConnections; i++) {
+#ifdef _WIN32
+                /* S_FREE works for both Winsock handles and CRT descriptors. */
+                if (conn[i].state == S_FREE) {
+#else
                 if (conn[i].fd == -1) {
+#endif
                         conn[i].fd        = fd;        // Save initial descriptor
                         conn[i].type      = type;      // Set connection type
                         conn[i].state     = S_CREATED; // Set connection state
