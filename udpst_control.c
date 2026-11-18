@@ -209,6 +209,15 @@ void init_conn(int connindex, BOOL cleanup) {
                                 break;
                         }
                 }
+#ifdef _WIN32
+                /* Never pass a Winsock SOCKET to the CRT close() function. */
+                if (c->type == T_UDP) {
+                        if (c->winSocket != INVALID_SOCKET)
+                                closesocket(c->winSocket);
+                } else if (c->fd >= 0 && c->type != T_CONSOLE) {
+                        _close(c->fd);
+                }
+#else
                 if (c->fd >= 0) {
 #ifdef __linux__
                         // Event needed to be non-null before kernel version 2.6.9
@@ -216,6 +225,7 @@ void init_conn(int connindex, BOOL cleanup) {
 #endif
                         close(c->fd);
                 }
+#endif
                 if (c->outputFPtr != NULL)
                         fclose(c->outputFPtr);
         }
@@ -229,6 +239,9 @@ void init_conn(int connindex, BOOL cleanup) {
         // Initialize non-zero values
         //
         c->fd           = -1;
+#ifdef _WIN32
+        c->winSocket    = INVALID_SOCKET;
+#endif
         c->priAction    = &null_action;
         c->secAction    = &null_action;
         c->timer1Action = &null_action;
