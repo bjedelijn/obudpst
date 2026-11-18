@@ -68,22 +68,19 @@ jobs:
           if-no-files-found: ignore
 
   win32-main-port-diagnostic:
-    name: Windows x64 main module diagnostics (expected failures)
+    name: Windows x64 main module compilation (strict)
     runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
       - name: Configure MSVC
         run: cmake -S . -B build-main-diagnostics -A x64
-      - name: Probe original main module compilation
+      - name: Compile Windows main module (strict)
         shell: pwsh
         run: |
           cmake --build build-main-diagnostics --config Release --target udpst_win32_main_diagnostics *> main-errors.log
           $status = $LASTEXITCODE
           Get-Content main-errors.log
-          if ($status -ne 0) {
-            Write-Host "::warning::Native Windows main module is not yet ported; compiler errors saved."
-          }
-          exit 0
+          exit $status
       - name: Upload main module MSVC diagnostics
         if: always()
         uses: actions/upload-artifact@v4
