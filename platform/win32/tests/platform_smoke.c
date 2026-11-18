@@ -32,13 +32,21 @@ static int udp_loopback_ipv4(void)
                    (const char *)&timeout_ms, sizeof(timeout_ms)) == SOCKET_ERROR)
         goto done;
 
+    if (udpst_win32_wait_readable(receiver, 0) != 0)
+        goto done;
+    if (udpst_win32_wait_writable(sender, 1000) != 1)
+        goto done;
     if (sendto(sender, payload, (int)sizeof(payload), 0,
                (const struct sockaddr *)&address, addrlen) != (int)sizeof(payload))
+        goto done;
+    if (udpst_win32_wait_readable(receiver, 1000) != 1)
         goto done;
     if (recvfrom(receiver, buffer, (int)sizeof(buffer), 0, NULL, NULL) !=
         (int)sizeof(payload))
         goto done;
     if (memcmp(buffer, payload, sizeof(payload)) != 0)
+        goto done;
+    if (udpst_win32_wait_readable(receiver, 0) != 0)
         goto done;
     rc = 0;
 done:
@@ -89,7 +97,7 @@ int main(void)
         fprintf(stderr, "IPv4 UDP loopback failed: %d\n", WSAGetLastError());
         goto done;
     }
-    puts("Windows IPv4/IPv6 sockets, IPv4 UDP loopback and clocks: PASS");
+    puts("Windows IPv4/IPv6 sockets, select readiness, IPv4 UDP loopback and clocks: PASS");
     result = 0;
 done:
     if (sock6 != INVALID_SOCKET) closesocket(sock6);
