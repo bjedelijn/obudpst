@@ -165,6 +165,57 @@ static int udpst_win32_poll_udp(WSAPOLLFD *entries, ULONG count, int timeout_ms)
 }
 
 /*
+ * Associate each polled SOCKET with its UDPST connection-table index.
+ * Keep this mapping separate from the legacy int fd field: SOCKET is
+ * UINT_PTR on 64-bit Windows and must never be truncated.
+ *
+ * On success, ready_indices contains only readable connections; error
+ * flags are returned separately as a negative result so the caller cannot
+ * accidentally treat a failed socket as a received datagram.
+ */
+typedef struct udpst_win32_poll_entry {
+    SOCKET socket_handle;
+    unsigned int connection_index;
+} udpst_win32_poll_entry;
+
+static int udpst_win32_poll_connections(
+    const udpst_win32_poll_entry *connections, ULONG count, int timeout_ms,
+    unsigned int *ready_indices, ULONG ready_capacity)
+{
+    WSAPOLLFD *fds;
+    ULONG i, ready_count = 0;
+    int result;
+    if (connections == NULL || ready_indices == NULL || count == 0 ||
+        count > 65536UL || ready_capacity < count)
+        return -1;
+    fds = (WSAPOLLFD *)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY,
+                                (SIZE_T)count * sizeof(*fds));
+    if (fds == NULL)
+        return -1;
+    for (i = 0; i < count; ++i) {
+        if (connections[i].socket_handle == INVALID_SOCKET) {
+            HeapFree(GetProcessHeap(), 0, fds);
+            return -1;
+        }
+        fds[i].fd = connections[i].socket_handle;
+        fds[i].events = POLLRDNORM;
+    }
+    result = udpst_win32_poll_udp(fds, count, timeout_ms);
+    if (result > 0) {
+        for (i = 0; i < count; ++i) {
+            if (fds[i].revents & (POLLERR | POLLHUP | POLLNVAL)) {
+                result = -1;
+                break;
+            }
+            if (fds[i].revents & POLLRDNORM)
+                ready_indices[ready_count++] = connections[i].connection_index;
+        }
+    }
+    HeapFree(GetProcessHeap(), 0, fds);
+    return result < 0 ? -1 : (int)ready_count;
+}
+
+/*
  * Resolve a UDP destination for either IPv4 or IPv6.
  * Caller owns *result and must release it with freeaddrinfo().
  * No network traffic is sent by this operation.
