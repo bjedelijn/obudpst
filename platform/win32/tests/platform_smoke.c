@@ -58,6 +58,8 @@ done:
 int main(void)
 {
     SOCKET sock = INVALID_SOCKET, sock6 = INVALID_SOCKET;
+    struct addrinfo *resolved = NULL, *node;
+    int found_ipv4 = 0;
     uint64_t utc_ns = 0, before_ns = 0, after_ns = 0;
     int result = 1;
 
@@ -93,13 +95,29 @@ int main(void)
         fprintf(stderr, "Monotonic clock failed\n");
         goto done;
     }
+    if (udpst_win32_resolve_udp("127.0.0.1", "24601", &resolved) != 0) {
+        fprintf(stderr, "IPv4 UDP destination resolution failed\\n");
+        goto done;
+    }
+    for (node = resolved; node != NULL; node = node->ai_next) {
+        if (node->ai_family == AF_INET &&
+            ntohs(((const struct sockaddr_in *)node->ai_addr)->sin_port) == 24601)
+            found_ipv4 = 1;
+    }
+    if (!found_ipv4) {
+        fprintf(stderr, "Resolved IPv4 endpoint missing expected port\\n");
+        goto done;
+    }
+    freeaddrinfo(resolved);
+    resolved = NULL;
     if (udp_loopback_ipv4() != 0) {
         fprintf(stderr, "IPv4 UDP loopback failed: %d\n", WSAGetLastError());
         goto done;
     }
-    puts("Windows IPv4/IPv6 sockets, select readiness, IPv4 UDP loopback and clocks: PASS");
+    puts("Windows IPv4/IPv6 sockets, select readiness, UDP resolution, IPv4 UDP loopback and clocks: PASS");
     result = 0;
 done:
+    if (resolved != NULL) freeaddrinfo(resolved);
     if (sock6 != INVALID_SOCKET) closesocket(sock6);
     if (sock != INVALID_SOCKET) closesocket(sock);
     udpst_win32_net_cleanup();
