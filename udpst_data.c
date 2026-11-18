@@ -2940,7 +2940,7 @@ int socket_error(int connindex, int error, char *optext) {
 
 #ifdef _WIN32
         if (error != WSAEWOULDBLOCK) {
-                var = sprintf(scratch, "[%d]%s WINSOCK ERROR: %d\\n", connindex, optext, error);
+                var = sprintf(scratch, "[%d]%s WINSOCK ERROR: %d\n", connindex, optext, error);
 #else
         if (error != EWOULDBLOCK && error != EAGAIN) {
                 var = sprintf(scratch, "[%d]%s ERROR: %s\n", connindex, optext, strerror(error));
