@@ -105,7 +105,21 @@
 #include <openssl/params.h>     // Added for OSSL_PARAM
 #endif
 #else
+#ifdef _WIN32
+#include "platform/win32/udpst_win32_platform.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdint.h>
+#include <errno.h>
+#include <limits.h>
+#include <time.h>
+#include <math.h>
+#include <fcntl.h>
+#include <io.h>
+#else
 #include "../udpst_control_alt1.h"
+#endif
 #endif
 //
 #include "cJSON.h"
@@ -115,7 +129,9 @@
 #include "udpst_control.h"
 #include "udpst_data.h"
 #ifndef __linux__
+#ifndef _WIN32
 #include "../udpst_control_alt2.h"
+#endif
 #endif
 
 //----------------------------------------------------------------------------
