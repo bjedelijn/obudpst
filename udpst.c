@@ -175,11 +175,17 @@ char json_errbuf[STRING_SIZE], json_errbuf2[STRING_SIZE];
 // Program entry point
 //
 int main(int argc, char **argv) {
+#ifndef _WIN32
         pid_t pid;
+#endif
         int i, j, var, var2, readyfds, fdpass, pristatus, secstatus;
+#ifdef _WIN32
+        int appstatus = STATUS_ERROR, outputfd = _fileno(stdout), logfilefd = -1;
+#else
         int appstatus = STATUS_ERROR, outputfd = STDOUT_FILENO, logfilefd = -1;
         struct itimerval itime;
         struct sigaction saction;
+#endif
         struct stat statbuf;
         struct perfStatsMaximums *psM = &repo.psMaximums;
         struct perfStatsAverages *psA = &repo.psAverages;
