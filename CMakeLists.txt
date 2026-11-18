@@ -119,6 +119,9 @@ if(WIN32)
     target_compile_definitions(udpst_win32_link_probe PRIVATE
         _WIN32_WINNT=0x0602 WIN32_LEAN_AND_MEAN DISABLE_INT_TIMER)
     target_link_libraries(udpst_win32_link_probe PRIVATE ws2_32)
+    if(OPENSSL_FOUND)
+        target_link_libraries(udpst_win32_link_probe PRIVATE OpenSSL::Crypto)
+    endif()
     set_target_properties(udpst_win32_link_probe PROPERTIES OUTPUT_NAME udpst)
     # udpst.c uses DISABLE_INT_TIMER directly in preprocessor guards.
     # config.h is generated but not included by that translation unit;
