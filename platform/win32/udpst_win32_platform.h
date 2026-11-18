@@ -81,6 +81,21 @@ static int udpst_win32_realtime_ns(uint64_t *ns)
     return 0;
 }
 
+/*
+ * Update the POSIX-shaped timespec used by the existing UDPST scheduler.
+ * The caller includes <time.h> before using this helper.
+ * FILETIME conversion is UTC and avoids unsupported MSVC clock_gettime().
+ */
+static int udpst_win32_utc_now(struct timespec *timestamp)
+{
+    uint64_t ns;
+    if (timestamp == NULL || udpst_win32_realtime_ns(&ns) != 0)
+        return -1;
+    timestamp->tv_sec = (time_t)(ns / UINT64_C(1000000000));
+    timestamp->tv_nsec = (long)(ns % UINT64_C(1000000000));
+    return 0;
+}
+
 /* Monotonic interval measurement; independent of wall-clock adjustments. */
 static int udpst_win32_monotonic_ns(uint64_t *ns)
 {
