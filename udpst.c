@@ -290,9 +290,18 @@ int main(int argc, char **argv) {
         //
         // Initialize local copy of system time clock and seed RNG
         //
+#ifdef _WIN32
+        if (udpst_win32_utc_now(&repo.systemClock) != 0) {
+                fprintf(stderr, "ERROR: Windows UTC clock initialization failed\n");
+                return STATUS_INIT_ERRBASE + ERROR_INIT_GENERIC;
+        }
+        tspeccpy(&repo.startTime, &repo.systemClock);
+        srand((unsigned int) repo.systemClock.tv_nsec);
+#else
         clock_gettime(CLOCK_REALTIME, &repo.systemClock);
         tspeccpy(&repo.startTime, &repo.systemClock);
         srandom((unsigned int) repo.systemClock.tv_nsec);
+#endif
 
         //
         // Print banner or initialize JSON output object
