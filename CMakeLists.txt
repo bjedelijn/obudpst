@@ -73,6 +73,12 @@ CHECK_FUNCTION_EXISTS (getifaddrs HAVE_GETIFADDRS)
 CHECK_FUNCTION_EXISTS (fork HAVE_WORKING_FORK)
 
 OPTION(DISABLE_INT_TIMER "Disable interval timer on systems without required timer resolution (increases CPU util.)" OFF)
+# The existing UDPST polling path drives timer expiry without POSIX SIGALRM.
+# Use it for the Windows diagnostic build until a native timer/event loop is ready.
+# This is intentionally not a claim of production-ready timing precision.
+if(WIN32)
+    set(DISABLE_INT_TIMER ON CACHE BOOL "Windows uses polling pending native timer support" FORCE)
+endif()
 OPTION(HAVE_SENDMMSG "Enable/Disable use of SendMMsg()" ON)
 OPTION(HAVE_RECVMMSG "Enable/Disable use of RecvMMsg()" ON)
 OPTION(HAVE_GSO "Enable/Disable use of Generic Segmentation Offload (GSO)" ON)
