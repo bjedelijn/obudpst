@@ -36,3 +36,14 @@ Target test server: `speedtest.nikhef.qonnected.net`
 - Minimum target: Windows Server 2012 x64. Windows Small Business Server 2011 / Windows Server 2008 R2 and older are explicitly out of scope.
 - Avoid introducing mandatory .NET or WSL dependencies; aim for a standalone native executable. Static linking and actual minimum supported Windows API version must be verified by CI and runtime testing.
 - Build on Windows 11/modern Windows Server first, then test legacy server compatibility explicitly; do not claim untested OS support.
+
+## Windows CI failures: 2026-11-18
+
+GitHub Actions runs [44333041244](https://github.com/bjedelijn/obudpst/actions/runs/44333041244) and [44333276893](https://github.com/bjedelijn/obudpst/actions/runs/44333276893) both passed CMake configure but failed while compiling `udpst_core` with MSVC C1083:
+- `udpst_control.c:108` includes missing `../udpst_control_alt1.h`
+- `udpst_data.c:113` includes missing `../udpst_data_alt1.h`
+- `udpst_srates.c:68` includes missing `../udpst_srates_alt1.h`
+
+Source inspection confirms these are intentional non-Linux portability hooks, and the missing `*_alt1.h` / `*_alt2.h` files are not in this fork or the upstream BroadbandForum repository. They must be replaced by a *real* Windows implementation, not empty placeholders. Additional incompatibilities are visible in `udpst.c` (epoll event loop, Linux/POSIX signal and timer code), socket handling, and the other C files. Do not misrepresent this first failure as a CMake or linker issue; it is the first compiler blocker, not necessarily the only blocker.
+
+Next: design a Windows-specific port layer with Winsock2, socket event handling, monotonic/high-resolution timing and client-only operation; ensure the CI workflow exercises the actual client executable and that Windows Server 2012 minimum APIs are used.
