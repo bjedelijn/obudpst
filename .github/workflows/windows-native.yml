@@ -1,0 +1,52 @@
+name: Windows native port - diagnostic build
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/windows-native
+    paths:
+      - '.github/workflows/windows-native.yml'
+      - 'CMakeLists.txt'
+      - '*.c'
+      - '*.h'
+      - 'docs/windows-native-port.md'
+
+jobs:
+  windows-x64-diagnostic:
+    name: Windows x64 compile diagnostics
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure CMake (diagnostic)
+        shell: pwsh
+        run: |
+          cmake -S . -B build-windows -A x64 *> configure.log
+          $status = $LASTEXITCODE
+          Get-Content configure.log
+          exit $status
+      - name: Build native executable (diagnostic)
+        shell: pwsh
+        run: |
+          cmake --build build-windows --config Release *> build.log
+          $status = $LASTEXITCODE
+          Get-Content build.log
+          exit $status
+      - name: Upload diagnostic logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-x64-build-logs
+          path: |
+            configure.log
+            build.log
+            build-windows/CMakeFiles/CMakeConfigureLog.yaml
+            build-windows/CMakeFiles/CMakeError.log
+          if-no-files-found: ignore
+      - name: Upload executable only if built
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: udpst-windows-x64-untested
+          path: build-windows/Release/udpst.exe
+          if-no-files-found: error
