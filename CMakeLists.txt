@@ -96,6 +96,12 @@ if(WIN32)
     target_compile_definitions(udpst_win32_srates PRIVATE
         _WIN32_WINNT=0x0602 WIN32_LEAN_AND_MEAN)
     target_link_libraries(udpst_win32_srates PRIVATE ws2_32)
+    # Compile the original control/data sources on demand to expose the next
+    # MSVC portability errors without blocking the passing module build.
+    add_library(udpst_win32_port_diagnostics OBJECT EXCLUDE_FROM_ALL
+        udpst_control.c udpst_data.c)
+    target_compile_definitions(udpst_win32_port_diagnostics PRIVATE
+        _WIN32_WINNT=0x0602 WIN32_LEAN_AND_MEAN)
     message(STATUS "Windows sending-rate module build enabled; full UDPST client not yet ported")
 else()
     # Define a library called udpst_core containing all core functionality.
