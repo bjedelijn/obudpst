@@ -262,6 +262,15 @@ int send_setupreq(int connindex, int mcIndex, int serverIndex) {
                 // Open local sysfs interface statistics
                 //
                 if (*conf.intfName) {
+#ifdef _WIN32
+                        /* Linux sysfs interface counters and SO_BINDTODEVICE are
+                         * unavailable on Windows. Fail explicitly instead of
+                         * silently testing over the wrong network adapter. */
+                        var = sprintf(scratch,
+                                      "ERROR: Explicit interface selection is not yet supported on Windows\\n");
+                        send_proc(errConn, scratch, var);
+                        return -1;
+#else
                         for (i = 0; i < 2; i++) {
                                 var = sprintf(intfpath, "/sys/class/net/%s/statistics/", conf.intfName);
                                 if ((conf.usTesting && i == 0) || (conf.dsTesting && i == 1))
@@ -288,6 +297,7 @@ int send_setupreq(int connindex, int mcIndex, int serverIndex) {
                                         repo.intfFDAlt = fd;
                                 }
                         }
+#endif
                 }
                 //
                 // Init aggregate connection and aggregate query timer
@@ -1860,8 +1870,13 @@ int new_conn(int activefd, char *host, int port, int type, int (*priaction)(int)
         // Console FD (i.e., stdin) gets setup in main()
         //
         if (type != T_CONSOLE) {
+#ifdef _WIN32
+                /* Winsock sockets require ioctlsocket(), not CRT fcntl(). */
+                if (udpst_win32_set_nonblocking((SOCKET)(uintptr_t)fd) != 0) {
+#else
                 var = fcntl(fd, F_GETFL, 0);
                 if (fcntl(fd, F_SETFL, var | O_NONBLOCK) != 0) {
+#endif
                         var = sprintf(scratch, "[%d]F_SETFL ERROR: %s\n", i, strerror(errno));
                         send_proc(errConn, scratch, var);
                         init_conn(i, TRUE);
