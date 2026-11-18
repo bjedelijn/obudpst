@@ -27,6 +27,27 @@
 #include <windows.h>
 #include <stdint.h>
 
+/*
+ * ECN uses the low two bits of the IPv4 TOS / IPv6 Traffic Class octet
+ * (RFC 3168). These numeric protocol values are portable; socket ancillary
+ * message support still requires a separate Windows implementation.
+ */
+#ifndef IPTOS_ECN
+#define IPTOS_ECN(x) ((x) & 0x03)
+#endif
+#ifndef IPTOS_ECN_NOT_ECT
+#define IPTOS_ECN_NOT_ECT 0x00
+#endif
+#ifndef IPTOS_ECN_ECT1
+#define IPTOS_ECN_ECT1 0x01
+#endif
+#ifndef IPTOS_ECN_ECT0
+#define IPTOS_ECN_ECT0 0x02
+#endif
+#ifndef IPTOS_ECN_CE
+#define IPTOS_ECN_CE 0x03
+#endif
+
 /* Initialize once before any socket operation; call cleanup on shutdown. */
 static int udpst_win32_net_init(void)
 {
