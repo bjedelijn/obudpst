@@ -112,6 +112,14 @@ if(WIN32)
     add_library(udpst_win32_main_diagnostics OBJECT EXCLUDE_FROM_ALL udpst.c)
     target_compile_definitions(udpst_win32_main_diagnostics PRIVATE
         _WIN32_WINNT=0x0602 WIN32_LEAN_AND_MEAN DISABLE_INT_TIMER)
+    # Link the complete native client as an opt-in target. Keep it out of
+    # ALL until the Windows link and runtime checks have been validated.
+    add_executable(udpst_win32_link_probe EXCLUDE_FROM_ALL
+        udpst.c udpst_control.c udpst_data.c udpst_srates.c cJSON.c)
+    target_compile_definitions(udpst_win32_link_probe PRIVATE
+        _WIN32_WINNT=0x0602 WIN32_LEAN_AND_MEAN DISABLE_INT_TIMER)
+    target_link_libraries(udpst_win32_link_probe PRIVATE ws2_32)
+    set_target_properties(udpst_win32_link_probe PROPERTIES OUTPUT_NAME udpst)
     # udpst.c uses DISABLE_INT_TIMER directly in preprocessor guards.
     # config.h is generated but not included by that translation unit;
     # defining the macro on this target actually excludes POSIX SIGALRM
