@@ -63,6 +63,17 @@ static int udp_loopback_ipv4(void)
             (entries[1].revents & POLLRDNORM))
             goto done;
     }
+    {
+        udpst_win32_poll_entry entries[2];
+        unsigned int ready_indices[2] = {0, 0};
+        entries[0].socket_handle = receiver;
+        entries[0].connection_index = 17;
+        entries[1].socket_handle = sender;
+        entries[1].connection_index = 23;
+        if (udpst_win32_poll_connections(entries, 2, 1000, ready_indices, 2) != 1 ||
+            ready_indices[0] != 17)
+            goto done;
+    }
     if (udpst_win32_wait_readable(receiver, 1000) != 1)
         goto done;
     if (recvfrom(receiver, buffer, (int)sizeof(buffer), 0, NULL, NULL) !=
