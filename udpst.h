@@ -155,6 +155,7 @@
 #define MIN_SUBINT_PERIOD    100        //
 #define MAX_SUBINT_PERIOD    10000      //
 #define DEF_CONTROL_PORT     24601      // Control port (previously 25000)
+#define LEGACY_CONTROL_PORT  24602      // Qonnected legacy test endpoint; selectable with -p
 #define MIN_CONTROL_PORT     1          //
 #define MAX_CONTROL_PORT     UINT16_MAX //
 #define DEF_BIMODAL_COUNT    0          // Bimodal initial sub-interval count
