@@ -15,7 +15,7 @@ on:
 
 jobs:
   windows-x64-diagnostic:
-    name: Windows x64 compile diagnostics
+    name: Windows x64 sending-rate compile
     runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
@@ -26,7 +26,7 @@ jobs:
           $status = $LASTEXITCODE
           Get-Content configure.log
           exit $status
-      - name: Build native executable (diagnostic)
+      - name: Build Windows sending-rate module
         shell: pwsh
         run: |
           cmake --build build-windows --config Release *> build.log
@@ -44,13 +44,6 @@ jobs:
             build-windows/CMakeFiles/CMakeConfigureLog.yaml
             build-windows/CMakeFiles/CMakeError.log
           if-no-files-found: ignore
-      - name: Upload executable only if built
-        if: success()
-        uses: actions/upload-artifact@v4
-        with:
-          name: udpst-windows-x64-untested
-          path: build-windows/Release/udpst.exe
-          if-no-files-found: error
 
   win32-platform-smoke:
     name: Windows x64 platform primitives
