@@ -2021,7 +2021,7 @@ int new_conn(int activefd, char *host, int port, int type, int (*priaction)(int)
         // Obtain local IP address and port number
         //
         var = sizeof(sas);
-        if (getsockname(fd, (struct sockaddr *) &sas, (socklen_t *) &var) < 0) {
+        if (getsockname(UDPST_CONN_SOCKET, (struct sockaddr *) &sas, (socklen_t *) &var) < 0) {
                 var = sprintf(scratch, "[%d]GETSOCKNAME ERROR: %s\n", i, strerror(errno));
                 send_proc(errConn, scratch, var);
                 init_conn(i, TRUE);
@@ -2054,7 +2054,11 @@ int sock_connect(int connindex) {
         //
         // Issue connect
         //
+#ifdef _WIN32
+        if (connect(c->winSocket, (struct sockaddr *) &repo.remSas, (int)repo.remSasLen) == SOCKET_ERROR) {
+#else
         if (connect(c->fd, (struct sockaddr *) &repo.remSas, repo.remSasLen) == -1) {
+#endif
                 //
                 // Connect error (immediate completion expected with SOCK_DGRAM)
                 //
