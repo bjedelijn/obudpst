@@ -2,7 +2,7 @@
 
 This branch builds on `feature/windows-native`. **The native Windows TR-471 engine is
 not yet validated or production ready.** The WPF UI cannot run real tests until
-the unified native client compiles, pass protocol compatibility tests and are
+the unified native client compiles, passes protocol compatibility tests and is
 placed next to the GUI.
 
 ## Architecture
@@ -15,6 +15,33 @@ placed next to the GUI.
 - The `--protocol` interface is a proposed contract for the unified engine; native implementation is still required.
 - The GUI preserves original engine JSON as nested results, without inventing
   metrics or pretending a local measurement ID is a server-side correlation ID.
+
+## Windows executable contract
+
+There are three user-facing executables, but only one measurement engine:
+
+| Executable | Interface | Role |
+| --- | --- | --- |
+| `Qonnected.Speedtest.exe` | WPF GUI | NOC technical controls and JSON export |
+| `Onvi.Speedtest.exe` | WPF GUI | Simplified customer interface |
+| `udpst.exe` | Console CLI | Shared Modern + Legacy TR-471 implementation |
+
+The native CLI must implement these commands before the GUIs can perform real tests:
+
+```powershell
+.\udpst.exe --protocol modern -f json -p 24601 -d speedtest.example.net
+.\udpst.exe --protocol modern -f json -p 24601 -u speedtest.example.net
+.\udpst.exe --protocol legacy -f json -p 24602 -d speedtest.example.net
+.\udpst.exe --protocol legacy -f json -p 24602 -u speedtest.example.net
+```
+
+The hostname above is an illustrative placeholder, not a configured service.
+The `--protocol` switch is a required *new* interface, not a claim that the
+existing OB-UDPST native code already implements it. Each command must return
+machine-readable JSON on stdout and a nonzero exit code on failure. Both
+protocol modes must be tested against compatible server versions. Keep the
+native CLI usable without either GUI. Do not change the production Linux server
+as part of Windows client development.
 
 ## Build
 Requires Windows, .NET 8 SDK with Windows desktop targeting support:
