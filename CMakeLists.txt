@@ -41,7 +41,12 @@ INCLUDE (FindPackageHandleStandardArgs)
 
 find_package(PkgConfig QUIET)
 
-find_package(OpenSSL 3.0) # Minimum of 3.0 required for <openssl/core_names.h>
+# Do not accidentally link the standalone Windows CLI to OpenSSL DLLs
+# installed on the CI runner. Windows authentication support must be added
+# explicitly with a deployable, validated crypto implementation.
+if(NOT WIN32)
+    find_package(OpenSSL 3.0) # Minimum of 3.0 required for <openssl/core_names.h>
+endif()
 if(OPENSSL_FOUND)
         set(HAVE_OPENSSL TRUE)
         link_directories(${OPENSSL_LIBRARY_DIRS})
@@ -76,6 +81,12 @@ OPTION(DISABLE_INT_TIMER "Disable interval timer on systems without required tim
 # The existing UDPST polling path drives timer expiry without POSIX SIGALRM.
 # Use it for the Windows diagnostic build until a native timer/event loop is ready.
 # This is intentionally not a claim of production-ready timing precision.
+if(WIN32 AND MSVC)
+    # Use the static MSVC runtime for standalone distribution.
+    # This does not eliminate other third-party DLL dependencies.
+    cmake_policy(SET CMP0091 NEW)
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+endif()
 if(WIN32)
     set(DISABLE_INT_TIMER ON CACHE BOOL "Windows uses polling pending native timer support" FORCE)
 endif()
