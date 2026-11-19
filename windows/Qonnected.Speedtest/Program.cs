@@ -153,7 +153,7 @@ internal sealed class SpeedtestWindow : Window
             return;
         }
         var selectedProtocol = customer ? "Modern" : protocol.SelectedItem?.ToString() ?? "Modern";
-        var executable = selectedProtocol == "Modern" ? settings.ModernExecutable : settings.LegacyExecutable;
+        var executable = settings.EngineExecutable;
         var testPort = customer ? settings.ModernPort : selectedPort;
         var testHost = customer ? settings.Server : server.Text.Trim();
         var directions = customer || direction.SelectedIndex == 2
@@ -171,7 +171,7 @@ internal sealed class SpeedtestWindow : Window
             foreach (var option in directions)
             {
                 status.Text = option == "-d" ? "Downloadmeting..." : "Uploadmeting...";
-                var raw = await EngineRunner.RunAsync(executable, testHost, testPort, option);
+                var raw = await EngineRunner.RunAsync(executable, testHost, testPort, option, selectedProtocol);
                 using var parsed = JsonDocument.Parse(raw);
                 reports.Add(parsed.RootElement.Clone());
             }
@@ -222,19 +222,18 @@ internal sealed class SpeedtestWindow : Window
 }
 
 internal sealed record SpeedtestSettings(string Server, int ModernPort,
-    string ModernExecutable, string LegacyExecutable, bool CustomerConfigured)
+    string EngineExecutable, bool CustomerConfigured)
 {
     internal static SpeedtestSettings Load(bool customer)
     {
         var folder = AppContext.BaseDirectory;
         if (!customer)
             return new("speedtest01", 24601,
-                Path.Combine(folder, "udpst-modern.exe"),
-                Path.Combine(folder, "udpst-legacy.exe"), true);
+                Path.Combine(folder, "udpst.exe"), true);
 
         var path = Path.Combine(folder, "onvi-settings.json");
         if (!File.Exists(path))
-            return new("", 24601, Path.Combine(folder, "udpst-modern.exe"), "", false);
+            return new("", 24601, Path.Combine(folder, "udpst.exe"), false);
         try
         {
             using var json = JsonDocument.Parse(File.ReadAllText(path));
@@ -242,7 +241,7 @@ internal sealed record SpeedtestSettings(string Server, int ModernPort,
             var host = root.GetProperty("server").GetString() ?? "";
             var p = root.GetProperty("port").GetInt32();
             var valid = !string.IsNullOrWhiteSpace(host) && p is >= 1 and <= 65535;
-            return new(host, p, Path.Combine(folder, "udpst-modern.exe"), "", valid);
+            return new(host, p, Path.Combine(folder, "udpst.exe"), valid);
         }
         catch (Exception ex) when (ex is IOException or JsonException or KeyNotFoundException
                                    or InvalidOperationException)
@@ -254,7 +253,7 @@ internal sealed record SpeedtestSettings(string Server, int ModernPort,
 
 internal static class EngineRunner
 {
-    internal static async Task<string> RunAsync(string exe, string host, int port, string direction)
+    internal static async Task<string> RunAsync(string exe, string host, int port, string direction, string protocol)
     {
         if (!File.Exists(exe)) throw new IOException(
             "TR-471 Windows-meetengine ontbreekt: " + Path.GetFileName(exe));
@@ -267,7 +266,7 @@ internal static class EngineRunner
             RedirectStandardError = true,
             CreateNoWindow = true
         };
-        foreach (var arg in new[] { "-f", "json", "-p", port.ToString(), direction, host })
+        // The unified native engine must implement --protocol modern|legacy.\n        foreach (var arg in new[] { "--protocol", protocol == "Modern" ? "modern" : "legacy", "-f", "json", "-p", port.ToString(), direction, host })
             process.StartInfo.ArgumentList.Add(arg);
         if (!process.Start()) throw new InvalidOperationException("Kan meetengine niet starten.");
         using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(5));
