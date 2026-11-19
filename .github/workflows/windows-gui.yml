@@ -50,6 +50,29 @@ jobs:
           if (Test-Path "dist-onvi/Qonnected.Speedtest.exe") { throw "Onvi package unexpectedly contains NOC executable" }
           if ((Test-Path "dist/udpst.exe") -or (Test-Path "dist-onvi/udpst.exe")) { throw "GUI artifacts must not require a sidecar udpst.exe" }
           Write-Host "Both distinct standalone GUI executables are present."
+      - name: Verify embedded engine extraction in both GUI executables (offline)
+        shell: pwsh
+        timeout-minutes: 2
+        run: |
+          foreach ($edition in @("dist/Qonnected.Speedtest.exe", "dist-onvi/Onvi.Speedtest.exe")) {
+            $marker = Join-Path $env:RUNNER_TEMP ((Split-Path $edition -Leaf) + ".engine-check.txt")
+            if (Test-Path $marker) { Remove-Item $marker }
+            $proc = Start-Process -FilePath (Resolve-Path $edition).Path -ArgumentList @("--verify-embedded-engine", $marker) -PassThru
+            try {
+              if (-not $proc.WaitForExit(15000)) {
+                Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+                throw "Embedded engine check timed out for $edition"
+              }
+              if ($proc.ExitCode -ne 0) { throw "Embedded engine check failed for $edition (exit $($proc.ExitCode))" }
+              if (-not (Test-Path $marker)) { throw "Missing engine verification marker for $edition" }
+              $message = Get-Content $marker -Raw
+              if ($message -notmatch "^Embedded native Windows engine extracted") { throw "Unexpected result for $edition : $message" }
+              Write-Host "$edition : $message"
+            } finally {
+              if (-not $proc.HasExited) { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue }
+              $proc.Dispose()
+            }
+          }
       - uses: actions/upload-artifact@v4
         with:
           name: onvi-speedtest-gui-dev
