@@ -490,11 +490,11 @@ int main(int argc, char **argv) {
                         static int timer_diag_logged = 0;
                         if (!timer_diag_logged && getenv("UDPST_TIMER_DIAG") != NULL) {
                                 timer_diag_logged = 1;
-                                fprintf(stderr, "TIMER_DIAG maxConnIndex=%d initial_interval_us=%ld\\n",
+                                fprintf(stderr, "TIMER_DIAG maxConnIndex=%d initial_interval_us=%ld\n",
                                         repo.maxConnIndex, (long)itime.it_interval.tv_usec);
                                 for (i = 0; i <= repo.maxConnIndex; i++) {
                                         fprintf(stderr,
-                                                "TIMER_DIAG conn=%d fd=%d type=%d state=%d end=%d t1=%d t2=%d t3=%d\\n",
+                                                "TIMER_DIAG conn=%d fd=%d type=%d state=%d end=%d t1=%d t2=%d t3=%d\n",
                                                 i, conn[i].fd, conn[i].type, conn[i].state,
                                                 !!tspecisset(&conn[i].endTime),
                                                 !!tspecisset(&conn[i].timer1Thresh),
