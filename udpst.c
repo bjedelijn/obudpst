@@ -483,27 +483,6 @@ int main(int argc, char **argv) {
         while (!sig_exit) {
 #ifndef DISABLE_INT_TIMER
                 /*
-                 * One-shot, opt-in idle timer diagnostics. Use
-                 * UDPST_TIMER_DIAG=1 on the isolated test server only.
-                 */
-                {
-                        static int timer_diag_logged = 0;
-                        if (!timer_diag_logged && getenv("UDPST_TIMER_DIAG") != NULL) {
-                                timer_diag_logged = 1;
-                                fprintf(stderr, "TIMER_DIAG maxConnIndex=%d initial_interval_us=%ld\n",
-                                        repo.maxConnIndex, (long)itime.it_interval.tv_usec);
-                                for (i = 0; i <= repo.maxConnIndex; i++) {
-                                        fprintf(stderr,
-                                                "TIMER_DIAG conn=%d fd=%d type=%d state=%d end=%d t1=%d t2=%d t3=%d\n",
-                                                i, conn[i].fd, conn[i].type, conn[i].state,
-                                                !!tspecisset(&conn[i].endTime),
-                                                !!tspecisset(&conn[i].timer1Thresh),
-                                                !!tspecisset(&conn[i].timer2Thresh),
-                                                !!tspecisset(&conn[i].timer3Thresh));
-                                }
-                        }
-                }
-                /*
                  * Idle servers do not need 100-us wakeups. Keep the original
                  * granularity whenever any connection has a pending deadline
                  * or is in data state. epoll still wakes immediately for
@@ -524,16 +503,6 @@ int main(int argc, char **argv) {
                                 }
                         }
                         desired_interval = needs_fine_timer ? MIN_INTERVAL_USEC : 10000;
-                        if (getenv("UDPST_TIMER_DIAG") != NULL) {
-                                static int timer_decision_logged = 0;
-                                if (!timer_decision_logged) {
-                                        timer_decision_logged = 1;
-                                        fprintf(stderr,
-                                                "TIMER_DIAG decision fine=%d current_us=%ld desired_us=%d\n",
-                                                needs_fine_timer, (long)itime.it_interval.tv_usec,
-                                                desired_interval);
-                                }
-                        }
                         if (itime.it_interval.tv_usec != desired_interval) {
                                 itime.it_interval.tv_sec = itime.it_value.tv_sec = 0;
                                 itime.it_interval.tv_usec = itime.it_value.tv_usec = desired_interval;
