@@ -20,12 +20,6 @@ jobs:
           $target = "windows/Qonnected.Speedtest/branding/Qonnected-NOC.ico"
           & (Get-Command magick.exe -ErrorAction Stop).Source -background none -density 256 $source -resize 256x256 $target
           if ($LASTEXITCODE -ne 0) { throw "Icon generation failed" }
-      - name: Build GUI
-        run: dotnet build windows/Qonnected.Speedtest/Qonnected.Speedtest.csproj -c Release
-      - name: Publish GUI (development only, no native UDPST engine)
-        run: dotnet publish windows/Qonnected.Speedtest/Qonnected.Speedtest.csproj -c Release -r win-x64 -o dist
-      - name: Publish Onvi GUI (development only)
-        run: dotnet publish windows/Qonnected.Speedtest/Qonnected.Speedtest.csproj -c Release -r win-x64 -p:SpeedtestEdition=Onvi -o dist-onvi
       - name: Build native Windows UDPST CLI
         shell: pwsh
         run: |
@@ -33,14 +27,19 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Native CMake configuration failed" }
           cmake --build build-native --config Release --target udpst_win32_link_probe
           if ($LASTEXITCODE -ne 0) { throw "Native UDPST link failed" }
-          if (-not (Test-Path "build-native/Release/udpst.exe")) { throw "Native udpst.exe missing" }
-      - name: Bundle shared native CLI with both GUIs
+          $engine = "build-native/Release/udpst.exe"
+          if (-not (Test-Path $engine)) { throw "Native udpst.exe missing" }
+          New-Item -ItemType Directory -Force "windows/Qonnected.Speedtest/native" | Out-Null
+          Copy-Item $engine "windows/Qonnected.Speedtest/native/udpst.exe" -Force
+      - name: Publish standalone NOC GUI with embedded native engine
+        run: dotnet publish windows/Qonnected.Speedtest/Qonnected.Speedtest.csproj -c Release -r win-x64 -o dist
+      - name: Publish standalone Onvi GUI with embedded native engine
+        run: dotnet publish windows/Qonnected.Speedtest/Qonnected.Speedtest.csproj -c Release -r win-x64 -p:SpeedtestEdition=Onvi -o dist-onvi
+      - name: Publish standalone CLI artifact
         shell: pwsh
         run: |
-          Copy-Item "build-native/Release/udpst.exe" "dist/udpst.exe" -Force
-          Copy-Item "build-native/Release/udpst.exe" "dist-onvi/udpst.exe" -Force
-          if (-not (Test-Path "dist/udpst.exe")) { throw "NOC package missing native CLI" }
-          if (-not (Test-Path "dist-onvi/udpst.exe")) { throw "Onvi package missing native CLI" }
+          New-Item -ItemType Directory -Force dist-cli | Out-Null
+          Copy-Item "build-native/Release/udpst.exe" "dist-cli/udpst.exe"
       - name: Verify separate GUI artifacts
         shell: pwsh
         run: |
@@ -49,7 +48,8 @@ jobs:
           if (-not (Test-Path $noc)) { throw "Missing Qonnected GUI executable: $noc" }
           if (-not (Test-Path $onvi)) { throw "Missing Onvi GUI executable: $onvi" }
           if (Test-Path "dist-onvi/Qonnected.Speedtest.exe") { throw "Onvi package unexpectedly contains NOC executable" }
-          Write-Host "Both distinct GUI executables are present."
+          if (Test-Path "dist/udpst.exe" -or (Test-Path "dist-onvi/udpst.exe")) { throw "GUI artifacts must not require a sidecar udpst.exe" }
+          Write-Host "Both distinct standalone GUI executables are present."
       - uses: actions/upload-artifact@v4
         with:
           name: onvi-speedtest-gui-dev
@@ -58,3 +58,7 @@ jobs:
         with:
           name: qonnected-speedtest-gui-dev
           path: dist/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: udpst-windows-cli-dev
+          path: dist-cli/
