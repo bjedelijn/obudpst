@@ -246,7 +246,7 @@ internal sealed record SpeedtestSettings(string Server, int ModernPort,
         catch (Exception ex) when (ex is IOException or JsonException or KeyNotFoundException
                                    or InvalidOperationException)
         {
-            return new("", 24601, Path.Combine(folder, "udpst-modern.exe"), "", false);
+            return new("", 24601, Path.Combine(folder, "udpst.exe"), false);
         }
     }
 }
@@ -266,7 +266,8 @@ internal static class EngineRunner
             RedirectStandardError = true,
             CreateNoWindow = true
         };
-        // The unified native engine must implement --protocol modern|legacy.\n        foreach (var arg in new[] { "--protocol", protocol == "Modern" ? "modern" : "legacy", "-f", "json", "-p", port.ToString(), direction, host })
+        // The unified native engine must implement --protocol modern|legacy.
+        foreach (var arg in new[] { "--protocol", protocol == "Modern" ? "modern" : "legacy", "-f", "json", "-p", port.ToString(), direction, host })
             process.StartInfo.ArgumentList.Add(arg);
         if (!process.Start()) throw new InvalidOperationException("Kan meetengine niet starten.");
         using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(5));
