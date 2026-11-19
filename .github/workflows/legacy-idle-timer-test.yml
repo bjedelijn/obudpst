@@ -28,7 +28,8 @@ jobs:
           grep -q 'desired_interval = needs_fine_timer ? MIN_INTERVAL_USEC : 10000' udpst.c
           grep -Eq '^#define MIN_INTERVAL_USEC 100' udpst_protocol.h
           grep -Eq '^set\(SOFTWARE_VER "7\.4\.0"\)' CMakeLists.txt
-          ./build/udpst -v > version.txt 2>&1 || true
+          # Never run the client without a bounded duration in CI.
+          timeout 5s ./build/udpst -? > version.txt 2>&1 || true
           cat version.txt
           grep -q '7.4.0' version.txt
       - name: Upload test executable
