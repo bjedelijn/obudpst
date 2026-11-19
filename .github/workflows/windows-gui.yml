@@ -12,6 +12,14 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
+      - name: Generate Qonnected Windows icon from supplied SVG
+        shell: pwsh
+        run: |
+          choco install imagemagick -y --no-progress
+          $source = "windows/Qonnected.Speedtest/branding/Qonnected-beeldmerk.svg"
+          $target = "windows/Qonnected.Speedtest/branding/Qonnected-NOC.ico"
+          & (Get-Command magick.exe -ErrorAction Stop).Source -background none -density 256 $source -resize 256x256 $target
+          if ($LASTEXITCODE -ne 0) { throw "Icon generation failed" }
       - name: Build GUI
         run: dotnet build windows/Qonnected.Speedtest/Qonnected.Speedtest.csproj -c Release
       - name: Publish GUI (development only, no native UDPST engine)
