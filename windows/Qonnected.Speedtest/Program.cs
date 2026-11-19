@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 
 namespace Qonnected.Speedtest;
 
@@ -62,6 +63,16 @@ internal sealed class SpeedtestWindow : Window
         var layout = new StackPanel { Margin = new Thickness(22) };
         var scroll = new ScrollViewer { Content = layout, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
         Content = scroll;
+        var brand = LoadBrandImage(customer);
+        if (brand is not null)
+        {
+            layout.Children.Add(new Image {
+                Source = brand, Height = customer ? 74 : 66,
+                Stretch = Stretch.Uniform, HorizontalAlignment = HorizontalAlignment.Left,
+                Margin = new Thickness(0, 0, 0, 12)
+            });
+            Icon = brand;
+        }
         layout.Children.Add(new TextBlock {
             Text = customer ? "Onvi internetsnelheid meten" : "Qonnected NOC — TR-471 Speedtest",
             FontSize = 23, FontWeight = FontWeights.SemiBold,
@@ -97,6 +108,21 @@ internal sealed class SpeedtestWindow : Window
             actions.Children.Add(export);
             layout.Children.Add(actions);
         }
+    }
+
+    private static BitmapImage? LoadBrandImage(bool onvi)
+    {
+        // Original supplied brand assets; copied into the publish output by MSBuild.
+        var file = Path.Combine(AppContext.BaseDirectory, "branding",
+            onvi ? "Blauw.png" : "Qonnected-Kleur.png");
+        if (!File.Exists(file)) return null;
+        var bitmap = new BitmapImage();
+        bitmap.BeginInit();
+        bitmap.UriSource = new Uri(file, UriKind.Absolute);
+        bitmap.CacheOption = BitmapCacheOption.OnLoad;
+        bitmap.EndInit();
+        bitmap.Freeze();
+        return bitmap;
     }
 
     private static FrameworkElement Labeled(string name, UIElement input)
