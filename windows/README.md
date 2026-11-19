@@ -24,17 +24,16 @@ dotnet build windows/Qonnected.Speedtest/Qonnected.Speedtest.csproj -c Release
 dotnet publish windows/Qonnected.Speedtest/Qonnected.Speedtest.csproj -c Release -r win-x64
 ```
 
-NOC: launch `Qonnected.Speedtest.exe`.
+NOC: launch `Qonnected.Speedtest.exe` from the default build.
 
-Onvi: deploy the same UI with `SPEEDTEST_EDITION=onvi` set in its launcher or
-environment and a locked, deployment-controlled `onvi-settings.json`:
+Onvi: build with `-p:SpeedtestEdition=Onvi` to produce a separate `Onvi.Speedtest.exe` and deploy it with a deployment-controlled `onvi-settings.json`:
 ```json
 { "server": "REPLACE_WITH_VERIFIED_PUBLIC_FQDN", "port": 24601 }
 ```
 This is a **developer scaffold**, not a customer distribution. Before shipping,
-make the Onvi edition a distinct branded executable with embedded/verified
-configuration and no environment-variable mode switch; implement usable customer
-summary rather than raw JSON; sign and package the binaries. Do not distribute
+embed/verify the Onvi public endpoint rather than relying on a replaceable JSON
+configuration; validate the speed metric mapping from actual engine JSON;
+include original logo PNG assets; sign and package the binaries. Do not distribute
 the placeholder configuration.
 
 ## Outstanding
@@ -42,7 +41,8 @@ the placeholder configuration.
 2. Port/test legacy client and validate protocol 8/9 negotiation.
 3. Validate JSON output and argument behavior for both engines.
 4. Add end-to-end integration tests against speedtest01 on both ports.
-5. Replace customer raw JSON display with understandable speed measurements.
+5. Replace the customer placeholder summary with validated download/upload speed measurements.
 6. Agree correlation with Speedtest Results Manager; server measurements alone
    do not guarantee a stable customer measurement ID.
-7. Build separate NOC and Onvi signed installers; validate privacy disclosure.
+7. Produce signed NOC and Onvi installers; validate privacy disclosure.
+8. Current CI builds the GUIs only; a green workflow does not establish native UDPST engine compatibility.
