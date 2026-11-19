@@ -1,0 +1,38 @@
+name: Windows native UDPST portability diagnostics
+on:
+  push:
+    branches: [feature/qonnected-windows-apps]
+    paths:
+      - 'udpst*.c'
+      - 'udpst*.h'
+      - 'cJSON.*'
+      - 'CMakeLists.txt'
+      - '.github/workflows/windows-native-diagnostics.yml'
+  workflow_dispatch:
+jobs:
+  native-port:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure native project
+        shell: pwsh
+        run: cmake -S . -B build-windows -A x64 -DDISABLE_INT_TIMER=ON
+      - name: Build existing Windows sending-rate module
+        shell: pwsh
+        run: cmake --build build-windows --config Release --target udpst_win32_srates
+      - name: Probe complete native CLI (diagnostic, expected to expose porting errors)
+        shell: pwsh
+        run: |
+          cmake --build build-windows --config Release --target udpst_win32_link_probe *> native-port-diagnostics.log
+          $code = $LASTEXITCODE
+          Get-Content native-port-diagnostics.log | Select-Object -Last 100
+          "Native link probe exit code: $code" | Out-File native-port-status.txt
+          if ($code -ne 0) {
+            Write-Warning "Native CLI is not yet portable; see diagnostic artifact. This does not indicate a working udpst.exe."
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-native-port-diagnostics
+          path: |
+            native-port-diagnostics.log
+            native-port-status.txt
