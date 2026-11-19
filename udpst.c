@@ -524,6 +524,16 @@ int main(int argc, char **argv) {
                                 }
                         }
                         desired_interval = needs_fine_timer ? MIN_INTERVAL_USEC : 10000;
+                        if (getenv("UDPST_TIMER_DIAG") != NULL) {
+                                static int timer_decision_logged = 0;
+                                if (!timer_decision_logged) {
+                                        timer_decision_logged = 1;
+                                        fprintf(stderr,
+                                                "TIMER_DIAG decision fine=%d current_us=%ld desired_us=%d\n",
+                                                needs_fine_timer, (long)itime.it_interval.tv_usec,
+                                                desired_interval);
+                                }
+                        }
                         if (itime.it_interval.tv_usec != desired_interval) {
                                 itime.it_interval.tv_sec = itime.it_value.tv_sec = 0;
                                 itime.it_interval.tv_usec = itime.it_value.tv_usec = desired_interval;
