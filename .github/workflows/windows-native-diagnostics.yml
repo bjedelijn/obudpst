@@ -45,8 +45,7 @@ jobs:
             Write-Warning "No native executable available for smoke test"
           } else {
             $cases = @(
-              @{ Name = "help"; Args = @("-h") },
-              @{ Name = "version"; Args = @("-v") },
+              @{ Name = "sending-rate-table"; Args = @("-S") },
               @{ Name = "invalid-option"; Args = @("--qonnected-invalid-option") }
             )
             foreach ($case in $cases) {
