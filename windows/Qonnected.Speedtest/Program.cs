@@ -1,0 +1,248 @@
+using System.Diagnostics;
+using System.IO;
+using System.Text;
+using System.Text.Json;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Media;
+
+namespace Qonnected.Speedtest;
+
+internal static class Program
+{
+    [STAThread]
+    private static void Main()
+    {
+        var app = new Application();
+        app.Run(new SpeedtestWindow());
+    }
+}
+
+internal sealed class SpeedtestWindow : Window
+{
+    private readonly bool customer = string.Equals(
+        Environment.GetEnvironmentVariable("SPEEDTEST_EDITION"), "onvi",
+        StringComparison.OrdinalIgnoreCase);
+    private readonly TextBox server = new() { Text = "speedtest01", MinWidth = 260 };
+    private readonly ComboBox protocol = new() { MinWidth = 150 };
+    private readonly TextBox port = new() { Text = "24601", Width = 85 };
+    private readonly ComboBox direction = new() { MinWidth = 160 };
+    private readonly TextBox result = new() { IsReadOnly = true, AcceptsReturn = true,
+        VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+        HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+        FontFamily = new FontFamily("Consolas"), MinHeight = 260,
+        TextWrapping = TextWrapping.NoWrap };
+    private readonly TextBlock status = new() { Text = "Gereed" };
+    private readonly Button start = new() { Content = "Start speedtest", Padding = new Thickness(16, 9, 16, 9) };
+    private readonly Button copy = new() { Content = "Kopieer JSON", IsEnabled = false };
+    private readonly Button export = new() { Content = "Exporteer JSON", IsEnabled = false };
+    private string? lastJson;
+
+    internal SpeedtestWindow()
+    {
+        Title = customer ? "Onvi Speedtest" : "Qonnected NOC Speedtest";
+        Width = customer ? 560 : 760;
+        Height = customer ? 510 : 680;
+        MinWidth = 460;
+        MinHeight = 410;
+
+        // The Onvi edition uses a separately deployed, locked configuration.
+        // Do not silently use internal hostnames or guessed public endpoints.
+        var settings = SpeedtestSettings.Load(customer);
+        server.Text = settings.Server;
+        port.Text = settings.ModernPort.ToString();
+        protocol.Items.Add("Modern");
+        protocol.Items.Add("Legacy 9");
+        protocol.SelectedIndex = 0;
+        direction.Items.Add("Download");
+        direction.Items.Add("Upload");
+        direction.Items.Add("Download + Upload");
+        direction.SelectedIndex = 2;
+
+        var layout = new StackPanel { Margin = new Thickness(22) };
+        var scroll = new ScrollViewer { Content = layout, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+        Content = scroll;
+        layout.Children.Add(new TextBlock {
+            Text = customer ? "Onvi internetsnelheid meten" : "Qonnected NOC — TR-471 Speedtest",
+            FontSize = 23, FontWeight = FontWeights.SemiBold,
+            Margin = new Thickness(0, 0, 0, 12)
+        });
+        if (!customer)
+        {
+            layout.Children.Add(Labeled("Server", server));
+            layout.Children.Add(Labeled("Protocol", protocol));
+            layout.Children.Add(Labeled("UDP-controlpoort", port));
+            layout.Children.Add(Labeled("Richting", direction));
+        }
+        else
+        {
+            layout.Children.Add(new TextBlock {
+                Text = "Klik op Start speedtest. De meetinstellingen zijn vooraf geconfigureerd.",
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 0, 0, 14)
+            });
+        }
+        start.Margin = new Thickness(0, 8, 0, 8);
+        start.Click += async (_, _) => await RunTestAsync(settings);
+        layout.Children.Add(start);
+        layout.Children.Add(status);
+        layout.Children.Add(result);
+        if (!customer)
+        {
+            var actions = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 10, 0, 0) };
+            copy.Margin = new Thickness(0, 0, 10, 0);
+            copy.Click += (_, _) => { if (lastJson is not null) Clipboard.SetText(lastJson); };
+            export.Click += (_, _) => ExportJson();
+            actions.Children.Add(copy);
+            actions.Children.Add(export);
+            layout.Children.Add(actions);
+        }
+    }
+
+    private static FrameworkElement Labeled(string name, UIElement input)
+    {
+        var panel = new StackPanel { Margin = new Thickness(0, 0, 0, 10) };
+        panel.Children.Add(new TextBlock { Text = name, Margin = new Thickness(0, 0, 0, 4) });
+        panel.Children.Add(input);
+        return panel;
+    }
+
+    private async Task RunTestAsync(SpeedtestSettings settings)
+    {
+        if (customer && !settings.CustomerConfigured)
+        {
+            MessageBox.Show("Deze Onvi-build is nog niet voorzien van de publieke meetserverconfiguratie.",
+                "Configuratie ontbreekt", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+        if (!int.TryParse(port.Text, out var selectedPort) || selectedPort < 1 || selectedPort > 65535)
+        {
+            MessageBox.Show("Ongeldige UDP-poort.");
+            return;
+        }
+        var selectedProtocol = customer ? "Modern" : protocol.SelectedItem?.ToString() ?? "Modern";
+        var executable = selectedProtocol == "Modern" ? settings.ModernExecutable : settings.LegacyExecutable;
+        var testPort = customer ? settings.ModernPort : selectedPort;
+        var directions = customer || direction.SelectedIndex == 2
+            ? new[] { "-d", "-u" }
+            : new[] { direction.SelectedIndex == 0 ? "-d" : "-u" };
+
+        start.IsEnabled = false;
+        copy.IsEnabled = false;
+        export.IsEnabled = false;
+        lastJson = null;
+        result.Text = "";
+        try
+        {
+            var reports = new List<JsonElement>();
+            foreach (var option in directions)
+            {
+                status.Text = option == "-d" ? "Downloadmeting..." : "Uploadmeting...";
+                var raw = await EngineRunner.RunAsync(executable, server.Text.Trim(), testPort, option);
+                using var parsed = JsonDocument.Parse(raw);
+                reports.Add(parsed.RootElement.Clone());
+            }
+            lastJson = JsonSerializer.Serialize(new {
+                schema_version = "1.0",
+                application = customer ? "onvi-speedtest" : "qonnected-noc-speedtest",
+                measured_at_utc = DateTimeOffset.UtcNow,
+                server = server.Text.Trim(),
+                control_port = testPort,
+                engine = selectedProtocol,
+                results = reports
+            }, new JsonSerializerOptions { WriteIndented = true });
+            result.Text = lastJson;
+            status.Text = "Meting voltooid";
+            copy.IsEnabled = !customer;
+            export.IsEnabled = !customer;
+        }
+        catch (Exception ex) when (ex is IOException or InvalidOperationException or
+                                   System.ComponentModel.Win32Exception or JsonException or
+                                   OperationCanceledException)
+        {
+            status.Text = "Meting mislukt";
+            result.Text = ex.Message;
+        }
+        finally { start.IsEnabled = true; }
+    }
+
+    private void ExportJson()
+    {
+        if (lastJson is null) return;
+        var dialog = new Microsoft.Win32.SaveFileDialog {
+            Filter = "JSON (*.json)|*.json",
+            DefaultExt = ".json",
+            FileName = "qonnected-speedtest-" + DateTime.Now.ToString("yyyyMMdd-HHmmss") + ".json"
+        };
+        if (dialog.ShowDialog(this) == true) File.WriteAllText(dialog.FileName, lastJson, Encoding.UTF8);
+    }
+}
+
+internal sealed record SpeedtestSettings(string Server, int ModernPort,
+    string ModernExecutable, string LegacyExecutable, bool CustomerConfigured)
+{
+    internal static SpeedtestSettings Load(bool customer)
+    {
+        var folder = AppContext.BaseDirectory;
+        if (!customer)
+            return new("speedtest01", 24601,
+                Path.Combine(folder, "udpst-modern.exe"),
+                Path.Combine(folder, "udpst-legacy.exe"), true);
+
+        var path = Path.Combine(folder, "onvi-settings.json");
+        if (!File.Exists(path))
+            return new("", 24601, Path.Combine(folder, "udpst-modern.exe"), "", false);
+        try
+        {
+            using var json = JsonDocument.Parse(File.ReadAllText(path));
+            var root = json.RootElement;
+            var host = root.GetProperty("server").GetString() ?? "";
+            var p = root.GetProperty("port").GetInt32();
+            var valid = !string.IsNullOrWhiteSpace(host) && p is >= 1 and <= 65535;
+            return new(host, p, Path.Combine(folder, "udpst-modern.exe"), "", valid);
+        }
+        catch (Exception ex) when (ex is IOException or JsonException or KeyNotFoundException
+                                   or InvalidOperationException)
+        {
+            return new("", 24601, Path.Combine(folder, "udpst-modern.exe"), "", false);
+        }
+    }
+}
+
+internal static class EngineRunner
+{
+    internal static async Task<string> RunAsync(string exe, string host, int port, string direction)
+    {
+        if (!File.Exists(exe)) throw new IOException(
+            "TR-471 Windows-meetengine ontbreekt: " + Path.GetFileName(exe));
+        if (string.IsNullOrWhiteSpace(host)) throw new InvalidOperationException("Server ontbreekt.");
+        using var process = new Process();
+        process.StartInfo = new ProcessStartInfo {
+            FileName = exe,
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            CreateNoWindow = true
+        };
+        foreach (var arg in new[] { "-f", "json", "-p", port.ToString(), direction, host })
+            process.StartInfo.ArgumentList.Add(arg);
+        if (!process.Start()) throw new InvalidOperationException("Kan meetengine niet starten.");
+        using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(5));
+        try
+        {
+            var stdout = process.StandardOutput.ReadToEndAsync(timeout.Token);
+            var stderr = process.StandardError.ReadToEndAsync(timeout.Token);
+            await process.WaitForExitAsync(timeout.Token);
+            var output = await stdout;
+            var errors = await stderr;
+            if (process.ExitCode != 0)
+                throw new InvalidOperationException("Meetengine exitcode " + process.ExitCode + ": " + errors);
+            return output;
+        }
+        catch (OperationCanceledException)
+        {
+            if (!process.HasExited) process.Kill(entireProcessTree: true);
+            throw;
+        }
+    }
+}
