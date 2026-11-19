@@ -11,6 +11,10 @@
     <SelfContained>true</SelfContained>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(SpeedtestEdition)' == 'Onvi'">
+    <DefineConstants>$(DefineConstants);ONVI_EDITION</DefineConstants>
+    <AssemblyName>Onvi.Speedtest</AssemblyName>
+  </PropertyGroup>
   <ItemGroup>
     <Content Include="branding\\*.png" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
