@@ -481,6 +481,39 @@ int main(int argc, char **argv) {
         // Primary control loop
         //
         while (!sig_exit) {
+#ifndef DISABLE_INT_TIMER
+                /*
+                 * Idle servers do not need 100-us wakeups. Keep the original
+                 * granularity whenever any connection has a pending deadline
+                 * or is in data state. epoll still wakes immediately for
+                 * incoming network traffic; the next iteration restores
+                 * the fine-grained timer before processing the new session.
+                 */
+                {
+                        int needs_fine_timer = 0;
+                        int desired_interval;
+                        for (i = 0; i <= repo.maxConnIndex; i++) {
+                                if (conn[i].state == S_DATA ||
+                                    tspecisset(&conn[i].endTime) ||
+                                    tspecisset(&conn[i].timer1Thresh) ||
+                                    tspecisset(&conn[i].timer2Thresh) ||
+                                    tspecisset(&conn[i].timer3Thresh)) {
+                                        needs_fine_timer = 1;
+                                        break;
+                                }
+                        }
+                        desired_interval = needs_fine_timer ? MIN_INTERVAL_USEC : 10000;
+                        if (itime.it_interval.tv_usec != desired_interval) {
+                                itime.it_interval.tv_sec = itime.it_value.tv_sec = 0;
+                                itime.it_interval.tv_usec = itime.it_value.tv_usec = desired_interval;
+                                if (setitimer(ITIMER_REAL, &itime, NULL) != 0) {
+                                        perror("setitimer");
+                                        appstatus = -1;
+                                        break;
+                                }
+                        }
+                }
+#endif
 #ifdef DISABLE_INT_TIMER
                 sig_alrm = 1; // Simulate expiry of system interval timer
 #endif
