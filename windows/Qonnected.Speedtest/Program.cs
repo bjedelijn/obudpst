@@ -1,5 +1,7 @@
 using System.Diagnostics;
 using System.IO;
+using System.Reflection;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Windows;
@@ -153,7 +155,7 @@ internal sealed class SpeedtestWindow : Window
             return;
         }
         var selectedProtocol = customer ? "Modern" : protocol.SelectedItem?.ToString() ?? "Modern";
-        var executable = settings.EngineExecutable;
+        var executable = EmbeddedEngine.Resolve();
         var testPort = customer ? settings.ModernPort : selectedPort;
         var testHost = customer ? settings.Server : server.Text.Trim();
         var directions = customer || direction.SelectedIndex == 2
@@ -248,6 +250,34 @@ internal sealed record SpeedtestSettings(string Server, int ModernPort,
         {
             return new("", 24601, Path.Combine(folder, "udpst.exe"), false);
         }
+    }
+}
+
+internal static class EmbeddedEngine
+{
+    private const string ResourceName = "Qonnected.Speedtest.Native.udpst.exe";
+
+    internal static string Resolve()
+    {
+        using var resource = Assembly.GetExecutingAssembly().GetManifestResourceStream(ResourceName);
+        if (resource is null)
+            throw new IOException("Ingebouwde TR-471 Windows-meetengine ontbreekt in deze build.");
+
+        using var buffer = new MemoryStream();
+        resource.CopyTo(buffer);
+        var bytes = buffer.ToArray();
+        var digest = Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
+        var directory = Path.Combine(Path.GetTempPath(), "Qonnected-Speedtest", digest);
+        Directory.CreateDirectory(directory);
+        var executable = Path.Combine(directory, "udpst.exe");
+        if (!File.Exists(executable) || !SHA256.HashData(File.ReadAllBytes(executable)).SequenceEqual(SHA256.HashData(bytes)))
+        {
+            var staging = Path.Combine(directory, Guid.NewGuid().ToString("N") + ".tmp");
+            File.WriteAllBytes(staging, bytes);
+            try { File.Move(staging, executable, overwrite: true); }
+            finally { if (File.Exists(staging)) File.Delete(staging); }
+        }
+        return executable;
     }
 }
 
