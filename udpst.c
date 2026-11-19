@@ -514,7 +514,7 @@ int main(int argc, char **argv) {
                         int needs_fine_timer = 0;
                         int desired_interval;
                         for (i = 0; i <= repo.maxConnIndex; i++) {
-                                if (conn[i].state == S_DATA ||
+                                if ((conn[i].state == S_DATA && conn[i].priAction != &service_setupreq) ||
                                     tspecisset(&conn[i].endTime) ||
                                     tspecisset(&conn[i].timer1Thresh) ||
                                     tspecisset(&conn[i].timer2Thresh) ||
