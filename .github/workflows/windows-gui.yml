@@ -26,6 +26,21 @@ jobs:
         run: dotnet publish windows/Qonnected.Speedtest/Qonnected.Speedtest.csproj -c Release -r win-x64 -o dist
       - name: Publish Onvi GUI (development only)
         run: dotnet publish windows/Qonnected.Speedtest/Qonnected.Speedtest.csproj -c Release -r win-x64 -p:SpeedtestEdition=Onvi -o dist-onvi
+      - name: Build native Windows UDPST CLI
+        shell: pwsh
+        run: |
+          cmake -S . -B build-native -A x64 -DDISABLE_INT_TIMER=ON
+          if ($LASTEXITCODE -ne 0) { throw "Native CMake configuration failed" }
+          cmake --build build-native --config Release --target udpst_win32_link_probe
+          if ($LASTEXITCODE -ne 0) { throw "Native UDPST link failed" }
+          if (-not (Test-Path "build-native/Release/udpst.exe")) { throw "Native udpst.exe missing" }
+      - name: Bundle shared native CLI with both GUIs
+        shell: pwsh
+        run: |
+          Copy-Item "build-native/Release/udpst.exe" "dist/udpst.exe" -Force
+          Copy-Item "build-native/Release/udpst.exe" "dist-onvi/udpst.exe" -Force
+          if (-not (Test-Path "dist/udpst.exe")) { throw "NOC package missing native CLI" }
+          if (-not (Test-Path "dist-onvi/udpst.exe")) { throw "Onvi package missing native CLI" }
       - name: Verify separate GUI artifacts
         shell: pwsh
         run: |
