@@ -83,7 +83,6 @@ internal sealed class SpeedtestWindow : Window
             if (!customer)
             {
                 port.Text = protocol.SelectedIndex == 1 ? "24602" : settings.ModernPort.ToString();
-                authenticationKey.IsEnabled = protocol.SelectedIndex == 0;
             }
         };
         direction.Items.Add("Download");
@@ -114,7 +113,7 @@ internal sealed class SpeedtestWindow : Window
             layout.Children.Add(Labeled("Server", server));
             layout.Children.Add(Labeled("Protocol", protocol));
             layout.Children.Add(Labeled("UDP-controlpoort", port));
-            layout.Children.Add(Labeled("Authenticatiesleutel (alleen Modern, niet opgeslagen)", authenticationKey));
+            layout.Children.Add(Labeled("Authenticatiesleutel (optioneel, niet opgeslagen)", authenticationKey));
             layout.Children.Add(Labeled("Richting", direction));
         }
         else
