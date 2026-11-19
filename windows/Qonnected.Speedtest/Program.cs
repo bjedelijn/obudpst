@@ -14,8 +14,26 @@ namespace Qonnected.Speedtest;
 internal static class Program
 {
     [STAThread]
-    private static void Main()
+    private static void Main(string[] args)
     {
+        // CI-only packaging check; does not start a measurement or contact a server.
+        if (args.Length == 2 && args[0] == "--verify-embedded-engine")
+        {
+            try
+            {
+                var executable = EmbeddedEngine.Resolve();
+                using var stream = File.OpenRead(executable);
+                if (stream.Length < 1024 || stream.ReadByte() != 'M' || stream.ReadByte() != 'Z')
+                    throw new InvalidDataException("Embedded engine is not a valid PE executable.");
+                File.WriteAllText(args[1], "Embedded native Windows engine extracted and PE header verified.");
+            }
+            catch (Exception ex)
+            {
+                File.WriteAllText(args[1], "FAILED: " + ex);
+                Environment.ExitCode = 1;
+            }
+            return;
+        }
         var app = new Application();
         app.Run(new SpeedtestWindow());
     }
