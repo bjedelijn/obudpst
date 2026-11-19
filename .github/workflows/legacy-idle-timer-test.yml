@@ -1,0 +1,39 @@
+name: Legacy idle timer test
+on:
+  push:
+    branches:
+      - fix/legacy-idle-timer-cpu
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build-and-smoke:
+    runs-on: ubuntu-24.04
+    container: debian:12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build and test tools
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends cmake ninja-build build-essential libssl-dev python3 procps
+      - name: Compile legacy
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --parallel 2
+          test -x build/udpst
+      - name: Check timer modes and legacy protocol
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'desired_interval = needs_fine_timer ? MIN_INTERVAL_USEC : 10000' udpst.c
+          grep -Eq '^#define MIN_INTERVAL_USEC 100' udpst_protocol.h
+          grep -Eq '^set\(SOFTWARE_VER "7\.4\.0"\)' CMakeLists.txt
+          ./build/udpst -v > version.txt 2>&1 || true
+          cat version.txt
+          grep -q '7.4.0' version.txt
+      - name: Upload test executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: udpst-legacy-idle-timer-test
+          path: build/udpst
+          retention-days: 7
