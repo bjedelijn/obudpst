@@ -27,6 +27,9 @@
 # ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 # POSSIBILITY OF SUCH DAMAGE.
 cmake_minimum_required(VERSION 3.5...3.10)
+if(POLICY CMP0091)
+    cmake_policy(SET CMP0091 NEW)
+endif()
 project(OB-UDPST)
 if(${CMAKE_VERSION} VERSION_GREATER "3.3.0")
         cmake_policy(SET CMP0057 NEW)
@@ -84,7 +87,6 @@ OPTION(DISABLE_INT_TIMER "Disable interval timer on systems without required tim
 if(WIN32 AND MSVC)
     # Use the static MSVC runtime for standalone distribution.
     # This does not eliminate other third-party DLL dependencies.
-    cmake_policy(SET CMP0091 NEW)
     set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 endif()
 if(WIN32)
