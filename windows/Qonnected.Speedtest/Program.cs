@@ -50,6 +50,7 @@ internal sealed class SpeedtestWindow : Window
     private readonly ComboBox protocol = new() { MinWidth = 150 };
     private readonly TextBox port = new() { Text = "24601", Width = 85 };
     private readonly ComboBox direction = new() { MinWidth = 160 };
+    private readonly PasswordBox authenticationKey = new();
     private readonly TextBox result = new() { IsReadOnly = true, AcceptsReturn = true,
         VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
         HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
@@ -79,7 +80,11 @@ internal sealed class SpeedtestWindow : Window
         protocol.SelectedIndex = 0;
         protocol.SelectionChanged += (_, _) =>
         {
-            if (!customer) port.Text = protocol.SelectedIndex == 1 ? "24602" : settings.ModernPort.ToString();
+            if (!customer)
+            {
+                port.Text = protocol.SelectedIndex == 1 ? "24602" : settings.ModernPort.ToString();
+                authenticationKey.IsEnabled = protocol.SelectedIndex == 0;
+            }
         };
         direction.Items.Add("Download");
         direction.Items.Add("Upload");
@@ -109,6 +114,7 @@ internal sealed class SpeedtestWindow : Window
             layout.Children.Add(Labeled("Server", server));
             layout.Children.Add(Labeled("Protocol", protocol));
             layout.Children.Add(Labeled("UDP-controlpoort", port));
+            layout.Children.Add(Labeled("Authenticatiesleutel (alleen Modern, niet opgeslagen)", authenticationKey));
             layout.Children.Add(Labeled("Richting", direction));
         }
         else
@@ -191,7 +197,8 @@ internal sealed class SpeedtestWindow : Window
             foreach (var option in directions)
             {
                 status.Text = option == "-d" ? "Downloadmeting..." : "Uploadmeting...";
-                var raw = await EngineRunner.RunAsync(executable, testHost, testPort, option, selectedProtocol);
+                var raw = await EngineRunner.RunAsync(executable, testHost, testPort, option, selectedProtocol,
+                    customer ? null : authenticationKey.Password);
                 using var parsed = JsonDocument.Parse(raw);
                 reports.Add(parsed.RootElement.Clone());
             }
@@ -301,7 +308,7 @@ internal static class EmbeddedEngine
 
 internal static class EngineRunner
 {
-    internal static async Task<string> RunAsync(string exe, string host, int port, string direction, string protocol)
+    internal static async Task<string> RunAsync(string exe, string host, int port, string direction, string protocol, string? authenticationKey)
     {
         if (!File.Exists(exe)) throw new IOException(
             "TR-471 Windows-meetengine ontbreekt: " + Path.GetFileName(exe));
@@ -318,6 +325,12 @@ internal static class EngineRunner
         // A legacy server port alone does not guarantee legacy protocol negotiation.
         if (protocol != "Modern")
             throw new InvalidOperationException("Legacy protocol 8/9 is nog niet ondersteund door deze Windows-meetengine.");
+        if (!string.IsNullOrEmpty(authenticationKey))
+        {
+            // Native -a is available only when AUTH_KEY_ENABLE is compiled in.
+            process.StartInfo.ArgumentList.Add("-a");
+            process.StartInfo.ArgumentList.Add(authenticationKey);
+        }
         foreach (var arg in new[] { "-f", "json", "-p", port.ToString(), direction, host })
             process.StartInfo.ArgumentList.Add(arg);
         if (!process.Start()) throw new InvalidOperationException("Kan meetengine niet starten.");
@@ -330,7 +343,12 @@ internal static class EngineRunner
             var output = await stdout;
             var errors = await stderr;
             if (process.ExitCode != 0)
-                throw new InvalidOperationException("Meetengine exitcode " + process.ExitCode + "\n\nStderr:\n" + (string.IsNullOrWhiteSpace(errors) ? "(leeg)" : errors) + "\n\nStdout:\n" + (string.IsNullOrWhiteSpace(output) ? "(leeg)" : output));
+            {
+                // The key is passed to the native process; never echo it in error output.
+                var safeOutput = string.IsNullOrEmpty(authenticationKey) ? output : output.Replace(authenticationKey, "[afgeschermd]");
+                var safeErrors = string.IsNullOrEmpty(authenticationKey) ? errors : errors.Replace(authenticationKey, "[afgeschermd]");
+                throw new InvalidOperationException("Meetengine exitcode " + process.ExitCode + "\n\nStderr:\n" + (string.IsNullOrWhiteSpace(safeErrors) ? "(leeg)" : safeErrors) + "\n\nStdout:\n" + (string.IsNullOrWhiteSpace(safeOutput) ? "(leeg)" : safeOutput));
+            }
             return output;
         }
         catch (OperationCanceledException)
