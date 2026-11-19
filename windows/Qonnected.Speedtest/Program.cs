@@ -21,9 +21,11 @@ internal static class Program
 
 internal sealed class SpeedtestWindow : Window
 {
-    private readonly bool customer = string.Equals(
-        AppContext.GetData("SpeedtestEdition")?.ToString(), "onvi",
-        StringComparison.OrdinalIgnoreCase);
+    #if ONVI_EDITION
+    private readonly bool customer = true;
+#else
+    private readonly bool customer = false;
+#endif
     private readonly TextBox server = new() { Text = "speedtest01", MinWidth = 260 };
     private readonly ComboBox protocol = new() { MinWidth = 150 };
     private readonly TextBox port = new() { Text = "24601", Width = 85 };
