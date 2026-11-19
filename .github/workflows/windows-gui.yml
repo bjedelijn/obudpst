@@ -1,0 +1,22 @@
+name: Windows WPF GUI build
+on:
+  push:
+    branches: [feature/qonnected-windows-apps]
+  pull_request:
+  workflow_dispatch:
+jobs:
+  gui:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Build GUI
+        run: dotnet build windows/Qonnected.Speedtest/Qonnected.Speedtest.csproj -c Release
+      - name: Publish GUI (development only, no native UDPST engine)
+        run: dotnet publish windows/Qonnected.Speedtest/Qonnected.Speedtest.csproj -c Release -r win-x64 -o dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: qonnected-speedtest-gui-dev
+          path: dist/
