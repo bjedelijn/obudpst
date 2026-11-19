@@ -20,10 +20,15 @@ jobs:
           $target = "windows/Qonnected.Speedtest/branding/Qonnected-NOC.ico"
           & (Get-Command magick.exe -ErrorAction Stop).Source -background none -density 256 $source -resize 256x256 $target
           if ($LASTEXITCODE -ne 0) { throw "Icon generation failed" }
+      - name: Install static OpenSSL for native Windows authentication
+        shell: pwsh
+        run: |
+          & "$env:VCPKG_INSTALLATION_ROOT/vcpkg.exe" install openssl:x64-windows-static
+          if ($LASTEXITCODE -ne 0) { throw "Static OpenSSL install failed" }
       - name: Build native Windows UDPST CLI
         shell: pwsh
         run: |
-          cmake -S . -B build-native -A x64 -DDISABLE_INT_TIMER=ON
+          cmake -S . -B build-native -A x64 -DDISABLE_INT_TIMER=ON "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows-static
           if ($LASTEXITCODE -ne 0) { throw "Native CMake configuration failed" }
           cmake --build build-native --config Release --target udpst_win32_link_probe
           if ($LASTEXITCODE -ne 0) { throw "Native UDPST link failed" }
@@ -31,6 +36,13 @@ jobs:
           if (-not (Test-Path $engine)) { throw "Native udpst.exe missing" }
           New-Item -ItemType Directory -Force "windows/Qonnected.Speedtest/native" | Out-Null
           Copy-Item $engine "windows/Qonnected.Speedtest/native/udpst.exe" -Force
+      - name: Verify native authentication is compiled in
+        shell: pwsh
+        run: |
+          $exe = (Resolve-Path "build-native/Release/udpst.exe").Path
+          $output = & $exe -a test-key -S 2>&1 | Out-String
+          if ($output -match "Built without authentication functionality") { throw "Authentication was disabled in native engine" }
+          if ($LASTEXITCODE -ne 0) { throw "Native authenticated CLI startup failed: $output" }
       - name: Inspect native CLI runtime dependencies and startup
         shell: pwsh
         timeout-minutes: 2
