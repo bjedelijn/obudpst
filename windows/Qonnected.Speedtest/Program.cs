@@ -22,7 +22,7 @@ internal static class Program
 internal sealed class SpeedtestWindow : Window
 {
     private readonly bool customer = string.Equals(
-        Environment.GetEnvironmentVariable("SPEEDTEST_EDITION"), "onvi",
+        AppContext.GetData("SpeedtestEdition")?.ToString(), "onvi",
         StringComparison.OrdinalIgnoreCase);
     private readonly TextBox server = new() { Text = "speedtest01", MinWidth = 260 };
     private readonly ComboBox protocol = new() { MinWidth = 150 };
@@ -177,7 +177,7 @@ internal sealed class SpeedtestWindow : Window
                 engine = selectedProtocol,
                 results = reports
             }, new JsonSerializerOptions { WriteIndented = true });
-            result.Text = lastJson;
+            result.Text = customer ? BuildCustomerSummary(reports) : lastJson;
             status.Text = "Meting voltooid";
             copy.IsEnabled = !customer;
             export.IsEnabled = !customer;
@@ -190,6 +190,16 @@ internal sealed class SpeedtestWindow : Window
             result.Text = ex.Message;
         }
         finally { start.IsEnabled = true; }
+    }
+
+    private static string BuildCustomerSummary(IReadOnlyList<JsonElement> reports)
+    {
+        // Do not guess values from different UDPST protocol versions.
+        // A validated metric mapping is needed before showing numeric speeds.
+        return "De snelheidsmeting is voltooid.\\n\\n" +
+               "Download- en uploadresultaten zijn ontvangen van de meetengine.\\n" +
+               "De weergave van exacte snelheden volgt na validatie van het JSON-formaat.\\n\\n" +
+               "Neem bij vragen contact op met Onvi Support.";
     }
 
     private void ExportJson()
