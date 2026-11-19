@@ -35,10 +35,33 @@ jobs:
           if ($code -ne 0) {
             Write-Warning "Native CLI is not yet portable; see diagnostic artifact. This does not indicate a working udpst.exe."
           }
+      - name: Smoke-test native CLI startup (no network traffic)
+        shell: pwsh
+        run: |
+          $exe = "build-windows/Release/udpst.exe"
+          if (-not (Test-Path $exe)) {
+            "Executable missing; startup test not run." | Set-Content native-cli-smoke.txt
+            Write-Warning "No native executable available for smoke test"
+          } else {
+            $cases = @(
+              @{ Name = "help"; Args = @("-h") },
+              @{ Name = "version"; Args = @("-v") },
+              @{ Name = "invalid-option"; Args = @("--qonnected-invalid-option") }
+            )
+            foreach ($case in $cases) {
+              "===== $($case.Name) =====" | Add-Content native-cli-smoke.txt
+              $output = & $exe @($case.Args) 2>&1 | Out-String
+              $exitCode = $LASTEXITCODE
+              "Exit code: $exitCode" | Add-Content native-cli-smoke.txt
+              $output | Add-Content native-cli-smoke.txt
+              Write-Host "$($case.Name): exit $exitCode"
+            }
+          }
       - uses: actions/upload-artifact@v4
         with:
           name: windows-native-port-diagnostics
           path: |
             native-port-diagnostics.log
             native-port-status.txt
+            native-cli-smoke.txt
             build-windows/Release/udpst.exe
