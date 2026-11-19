@@ -124,6 +124,8 @@ internal sealed class SpeedtestWindow : Window
                 Margin = new Thickness(0, 0, 0, 14)
             });
         }
+        if (customer)
+            layout.Children.Add(Labeled("Authenticatiesleutel (optioneel, niet opgeslagen)", authenticationKey));
         start.Margin = new Thickness(0, 8, 0, 8);
         start.Click += async (_, _) => await RunTestAsync(settings);
         layout.Children.Add(start);
@@ -197,7 +199,7 @@ internal sealed class SpeedtestWindow : Window
             {
                 status.Text = option == "-d" ? "Downloadmeting..." : "Uploadmeting...";
                 var raw = await EngineRunner.RunAsync(executable, testHost, testPort, option, selectedProtocol,
-                    customer ? null : authenticationKey.Password);
+                    authenticationKey.Password);
                 using var parsed = JsonDocument.Parse(raw);
                 reports.Add(parsed.RootElement.Clone());
             }
