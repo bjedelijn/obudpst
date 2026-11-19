@@ -44,11 +44,13 @@ INCLUDE (FindPackageHandleStandardArgs)
 
 find_package(PkgConfig QUIET)
 
-# Do not accidentally link the standalone Windows CLI to OpenSSL DLLs
-# installed on the CI runner. Windows authentication support must be added
-# explicitly with a deployable, validated crypto implementation.
-if(NOT WIN32)
-    find_package(OpenSSL 3.0) # Minimum of 3.0 required for <openssl/core_names.h>
+# Windows uses the statically linked vcpkg OpenSSL package to keep the GUI self-contained.
+# Require crypto explicitly: silently disabling authentication would produce unusable builds.
+if(WIN32)
+    set(OPENSSL_USE_STATIC_LIBS TRUE)
+    find_package(OpenSSL 3.0 REQUIRED COMPONENTS Crypto)
+else()
+    find_package(OpenSSL 3.0)
 endif()
 if(OPENSSL_FOUND)
         set(HAVE_OPENSSL TRUE)
