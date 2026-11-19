@@ -26,6 +26,15 @@ jobs:
         run: dotnet publish windows/Qonnected.Speedtest/Qonnected.Speedtest.csproj -c Release -r win-x64 -o dist
       - name: Publish Onvi GUI (development only)
         run: dotnet publish windows/Qonnected.Speedtest/Qonnected.Speedtest.csproj -c Release -r win-x64 -p:SpeedtestEdition=Onvi -o dist-onvi
+      - name: Verify separate GUI artifacts
+        shell: pwsh
+        run: |
+          $noc = "dist/Qonnected.Speedtest.exe"
+          $onvi = "dist-onvi/Onvi.Speedtest.exe"
+          if (-not (Test-Path $noc)) { throw "Missing Qonnected GUI executable: $noc" }
+          if (-not (Test-Path $onvi)) { throw "Missing Onvi GUI executable: $onvi" }
+          if (Test-Path "dist-onvi/Qonnected.Speedtest.exe") { throw "Onvi package unexpectedly contains NOC executable" }
+          Write-Host "Both distinct GUI executables are present."
       - uses: actions/upload-artifact@v4
         with:
           name: onvi-speedtest-gui-dev
