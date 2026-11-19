@@ -611,7 +611,7 @@ static void _sendmsg_burst(int connindex, int totalburst, int burstsize, unsigne
                 //
 #ifdef _WIN32
                 /* Connected UDP sockets: one send() corresponds to one datagram. */
-                var       = send((SOCKET)(uintptr_t)c->fd, (const char *)lHdr, (int)uvar, 0);
+                var       = send(c->winSocket, (const char *)lHdr, (int)uvar, 0);
                 senderrno = (var == SOCKET_ERROR) ? WSAGetLastError() : 0;
 #else
                 var       = sendmsg(c->fd, &msg, 0);
