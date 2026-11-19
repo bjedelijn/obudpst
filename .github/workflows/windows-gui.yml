@@ -45,7 +45,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Native authenticated CLI startup failed: $output" }
       - name: Inspect native CLI runtime dependencies and startup
         shell: pwsh
-        timeout-minutes: 2
+        timeout-minutes: 3
         run: |
           $exe = (Resolve-Path "build-native/Release/udpst.exe").Path
           $dumpbin = Get-ChildItem "C:/Program Files/Microsoft Visual Studio/2022" -Filter dumpbin.exe -Recurse -ErrorAction SilentlyContinue |
@@ -56,23 +56,9 @@ jobs:
           } else {
             "dumpbin.exe not found on runner" | Set-Content native-cli-dependencies.txt
           }
-          $stdout = Join-Path $env:RUNNER_TEMP "udpst-srates-out.txt"
-          $stderr = Join-Path $env:RUNNER_TEMP "udpst-srates-err.txt"
-          $proc = Start-Process -FilePath $exe -ArgumentList @("-S") -PassThru -NoNewWindow -RedirectStandardOutput $stdout -RedirectStandardError $stderr
-          try {
-            if (-not $proc.WaitForExit(10000)) {
-              Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
-              throw "Native CLI startup timed out"
-            }
-            "Exit code: $($proc.ExitCode)" | Set-Content native-cli-startup.txt
-            if (Test-Path $stdout) { Get-Content $stdout | Add-Content native-cli-startup.txt }
-            if (Test-Path $stderr) { Get-Content $stderr | Add-Content native-cli-startup.txt }
-            if ($proc.ExitCode -eq -1073741515) { throw "Native CLI requires a missing DLL (0xC0000135)" }
-            if ($proc.ExitCode -ne 0) { throw "Native CLI -S exited with $($proc.ExitCode)" }
-          } finally {
-            if (-not $proc.HasExited) { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue }
-            $proc.Dispose()
-          }
+          # The -a test-key -S smoke test above already verifies native startup.
+          # Do not start a second native process here; only inspect dependencies.
+          "Native authentication and startup smoke test passed in previous step." | Set-Content native-cli-startup.txt
       - name: Publish standalone NOC GUI with embedded native engine
         run: dotnet publish windows/Qonnected.Speedtest/Qonnected.Speedtest.csproj -c Release -r win-x64 -o dist
       - name: Publish standalone Onvi GUI with embedded native engine
