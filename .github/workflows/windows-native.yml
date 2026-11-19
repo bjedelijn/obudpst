@@ -103,11 +103,24 @@ jobs:
           $status = $LASTEXITCODE
           Get-Content link-errors.log
           exit $status
+      - name: Stage portable Windows runtime
+        shell: pwsh
+        run: |
+          $stage = Join-Path $PWD "windows-package"
+          New-Item -ItemType Directory -Path $stage -Force | Out-Null
+          Copy-Item "build-link-probe/Release/udpst.exe" $stage
+          $crypto = Get-ChildItem "C:/Program Files/OpenSSL", "C:/Program Files", "C:/hostedtoolcache/windows" -Filter "libcrypto-3-x64.dll" -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $crypto) {
+            throw "Required OpenSSL runtime libcrypto-3-x64.dll not found; refusing incomplete package"
+          }
+          Copy-Item $crypto.FullName $stage
+          Write-Host "Bundled OpenSSL runtime from $($crypto.FullName)"
+          Get-ChildItem $stage | Select-Object Name, Length
       - name: Smoke test Windows executable
         shell: pwsh
         timeout-minutes: 2
         run: |
-          $exe = Join-Path $PWD "build-link-probe/Release/udpst.exe"
+          $exe = Join-Path $PWD "windows-package/udpst.exe"
           if (-not (Test-Path $exe)) { throw "udpst.exe missing after successful build" }
           # -h without its required argument prints usage and exits immediately.
           # Use a bounded child process so a regression cannot hang CI.
@@ -130,7 +143,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: udpst-windows-x64
-          path: build-link-probe/Release/udpst.exe
+          path: windows-package/
           if-no-files-found: error
       - name: Upload linker diagnostics
         if: always()
