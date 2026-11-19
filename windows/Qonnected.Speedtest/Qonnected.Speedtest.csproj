@@ -6,6 +6,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>Qonnected.Speedtest</AssemblyName>
+    <ApplicationIcon Condition="Exists('branding/Qonnected-NOC.ico')">branding/Qonnected-NOC.ico</ApplicationIcon>
     <PublishSingleFile>true</PublishSingleFile>
     <SelfContained>true</SelfContained>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
