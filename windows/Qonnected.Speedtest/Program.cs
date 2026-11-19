@@ -57,6 +57,10 @@ internal sealed class SpeedtestWindow : Window
         protocol.Items.Add("Modern");
         protocol.Items.Add("Legacy 9");
         protocol.SelectedIndex = 0;
+        protocol.SelectionChanged += (_, _) =>
+        {
+            if (!customer) port.Text = protocol.SelectedIndex == 1 ? "24602" : settings.ModernPort.ToString();
+        };
         direction.Items.Add("Download");
         direction.Items.Add("Upload");
         direction.Items.Add("Download + Upload");
@@ -151,6 +155,7 @@ internal sealed class SpeedtestWindow : Window
         var selectedProtocol = customer ? "Modern" : protocol.SelectedItem?.ToString() ?? "Modern";
         var executable = selectedProtocol == "Modern" ? settings.ModernExecutable : settings.LegacyExecutable;
         var testPort = customer ? settings.ModernPort : selectedPort;
+        var testHost = customer ? settings.Server : server.Text.Trim();
         var directions = customer || direction.SelectedIndex == 2
             ? new[] { "-d", "-u" }
             : new[] { direction.SelectedIndex == 0 ? "-d" : "-u" };
@@ -166,7 +171,7 @@ internal sealed class SpeedtestWindow : Window
             foreach (var option in directions)
             {
                 status.Text = option == "-d" ? "Downloadmeting..." : "Uploadmeting...";
-                var raw = await EngineRunner.RunAsync(executable, server.Text.Trim(), testPort, option);
+                var raw = await EngineRunner.RunAsync(executable, testHost, testPort, option);
                 using var parsed = JsonDocument.Parse(raw);
                 reports.Add(parsed.RootElement.Clone());
             }
@@ -174,7 +179,7 @@ internal sealed class SpeedtestWindow : Window
                 schema_version = "1.0",
                 application = customer ? "onvi-speedtest" : "qonnected-noc-speedtest",
                 measured_at_utc = DateTimeOffset.UtcNow,
-                server = server.Text.Trim(),
+                server = testHost,
                 control_port = testPort,
                 engine = selectedProtocol,
                 results = reports
@@ -198,9 +203,9 @@ internal sealed class SpeedtestWindow : Window
     {
         // Do not guess values from different UDPST protocol versions.
         // A validated metric mapping is needed before showing numeric speeds.
-        return "De snelheidsmeting is voltooid.\\n\\n" +
-               "Download- en uploadresultaten zijn ontvangen van de meetengine.\\n" +
-               "De weergave van exacte snelheden volgt na validatie van het JSON-formaat.\\n\\n" +
+        return "De meetengine heeft de test afgerond.\n\n" +
+               "De resultaten zijn nog niet als downloadsnelheid en uploadsnelheid weergegeven, " +
+               "omdat de JSON-velden eerst tegen de echte Windows-meetengine moeten worden gevalideerd.\n\n" +
                "Neem bij vragen contact op met Onvi Support.";
     }
 
