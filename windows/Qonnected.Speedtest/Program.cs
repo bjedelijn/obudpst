@@ -314,8 +314,11 @@ internal static class EngineRunner
             RedirectStandardError = true,
             CreateNoWindow = true
         };
-        // The unified native engine must implement --protocol modern|legacy.
-        foreach (var arg in new[] { "--protocol", protocol == "Modern" ? "modern" : "legacy", "-f", "json", "-p", port.ToString(), direction, host })
+        // Native OB-UDPST uses short options; --protocol is not implemented.
+        // A legacy server port alone does not guarantee legacy protocol negotiation.
+        if (protocol != "Modern")
+            throw new InvalidOperationException("Legacy protocol 8/9 is nog niet ondersteund door deze Windows-meetengine.");
+        foreach (var arg in new[] { "-f", "json", "-p", port.ToString(), direction, host })
             process.StartInfo.ArgumentList.Add(arg);
         if (!process.Start()) throw new InvalidOperationException("Kan meetengine niet starten.");
         using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(5));
