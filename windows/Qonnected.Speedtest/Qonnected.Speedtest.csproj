@@ -15,6 +15,9 @@
     <DefineConstants>$(DefineConstants);ONVI_EDITION</DefineConstants>
     <AssemblyName>Onvi.Speedtest</AssemblyName>
   </PropertyGroup>
+  <ItemGroup Condition="Exists('native/udpst.exe')">
+    <EmbeddedResource Include="native/udpst.exe" LogicalName="Qonnected.Speedtest.Native.udpst.exe" />
+  </ItemGroup>
   <ItemGroup>
     <Content Include="branding\\*.png" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
