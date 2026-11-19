@@ -35,11 +35,12 @@ jobs:
           if ($code -ne 0) {
             Write-Warning "Native CLI is not yet portable; see diagnostic artifact. This does not indicate a working udpst.exe."
           }
-      - name: Smoke-test native CLI startup (no network traffic)
+      - name: Smoke-test native CLI startup (10s timeout per invocation)
         shell: pwsh
+        timeout-minutes: 2
         run: |
-          $exe = "build-windows/Release/udpst.exe"
-          if (-not (Test-Path $exe)) {
+          $exe = (Resolve-Path "build-windows/Release/udpst.exe" -ErrorAction SilentlyContinue)
+          if (-not $exe) {
             "Executable missing; startup test not run." | Set-Content native-cli-smoke.txt
             Write-Warning "No native executable available for smoke test"
           } else {
@@ -50,11 +51,25 @@ jobs:
             )
             foreach ($case in $cases) {
               "===== $($case.Name) =====" | Add-Content native-cli-smoke.txt
-              $output = & $exe @($case.Args) 2>&1 | Out-String
-              $exitCode = $LASTEXITCODE
-              "Exit code: $exitCode" | Add-Content native-cli-smoke.txt
-              $output | Add-Content native-cli-smoke.txt
-              Write-Host "$($case.Name): exit $exitCode"
+              $stdout = Join-Path $env:RUNNER_TEMP "udpst-$($case.Name)-stdout.txt"
+              $stderr = Join-Path $env:RUNNER_TEMP "udpst-$($case.Name)-stderr.txt"
+              $proc = Start-Process -FilePath $exe.Path -ArgumentList $case.Args -PassThru -NoNewWindow -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+              try {
+                $finished = $proc.WaitForExit(10000)
+                if (-not $finished) {
+                  Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+                  "TIMEOUT after 10 seconds" | Add-Content native-cli-smoke.txt
+                  Write-Warning "$($case.Name): timed out after 10 seconds"
+                } else {
+                  "Exit code: $($proc.ExitCode)" | Add-Content native-cli-smoke.txt
+                  Write-Host "$($case.Name): exit $($proc.ExitCode)"
+                }
+              } finally {
+                if (-not $proc.HasExited) { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue }
+                if (Test-Path $stdout) { Get-Content $stdout | Add-Content native-cli-smoke.txt }
+                if (Test-Path $stderr) { Get-Content $stderr | Add-Content native-cli-smoke.txt }
+                $proc.Dispose()
+              }
             }
           }
       - uses: actions/upload-artifact@v4
