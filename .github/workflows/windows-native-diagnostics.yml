@@ -27,6 +27,11 @@ jobs:
           $code = $LASTEXITCODE
           Get-Content native-port-diagnostics.log | Select-Object -Last 100
           "Native link probe exit code: $code" | Out-File native-port-status.txt
+          if ($code -eq 0) {
+            $exe = "build-windows/Release/udpst.exe"
+            if (-not (Test-Path $exe)) { throw "Link succeeded but udpst.exe was not found" }
+            Write-Host "Native Windows executable exists: $exe"
+          }
           if ($code -ne 0) {
             Write-Warning "Native CLI is not yet portable; see diagnostic artifact. This does not indicate a working udpst.exe."
           }
@@ -36,3 +41,4 @@ jobs:
           path: |
             native-port-diagnostics.log
             native-port-status.txt
+            build-windows/Release/udpst.exe
