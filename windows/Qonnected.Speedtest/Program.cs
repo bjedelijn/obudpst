@@ -173,7 +173,6 @@ internal sealed class SpeedtestWindow : Window
             return;
         }
         var selectedProtocol = customer ? "Modern" : protocol.SelectedItem?.ToString() ?? "Modern";
-        var executable = EmbeddedEngine.Resolve();
         var testPort = customer ? settings.ModernPort : selectedPort;
         var testHost = customer ? settings.Server : server.Text.Trim();
         var directions = customer || direction.SelectedIndex == 2
@@ -187,6 +186,7 @@ internal sealed class SpeedtestWindow : Window
         result.Text = "";
         try
         {
+            var executable = EmbeddedEngine.Resolve();
             var reports = new List<JsonElement>();
             foreach (var option in directions)
             {
