@@ -48,7 +48,7 @@ jobs:
           if (-not (Test-Path $noc)) { throw "Missing Qonnected GUI executable: $noc" }
           if (-not (Test-Path $onvi)) { throw "Missing Onvi GUI executable: $onvi" }
           if (Test-Path "dist-onvi/Qonnected.Speedtest.exe") { throw "Onvi package unexpectedly contains NOC executable" }
-          if (Test-Path "dist/udpst.exe" -or (Test-Path "dist-onvi/udpst.exe")) { throw "GUI artifacts must not require a sidecar udpst.exe" }
+          if ((Test-Path "dist/udpst.exe") -or (Test-Path "dist-onvi/udpst.exe")) { throw "GUI artifacts must not require a sidecar udpst.exe" }
           Write-Host "Both distinct standalone GUI executables are present."
       - uses: actions/upload-artifact@v4
         with:
