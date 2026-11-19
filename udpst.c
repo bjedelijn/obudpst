@@ -483,6 +483,27 @@ int main(int argc, char **argv) {
         while (!sig_exit) {
 #ifndef DISABLE_INT_TIMER
                 /*
+                 * One-shot, opt-in idle timer diagnostics. Use
+                 * UDPST_TIMER_DIAG=1 on the isolated test server only.
+                 */
+                {
+                        static int timer_diag_logged = 0;
+                        if (!timer_diag_logged && getenv("UDPST_TIMER_DIAG") != NULL) {
+                                timer_diag_logged = 1;
+                                fprintf(stderr, "TIMER_DIAG maxConnIndex=%d initial_interval_us=%ld\\n",
+                                        repo.maxConnIndex, (long)itime.it_interval.tv_usec);
+                                for (i = 0; i <= repo.maxConnIndex; i++) {
+                                        fprintf(stderr,
+                                                "TIMER_DIAG conn=%d fd=%d type=%d state=%d end=%d t1=%d t2=%d t3=%d\\n",
+                                                i, conn[i].fd, conn[i].type, conn[i].state,
+                                                !!tspecisset(&conn[i].endTime),
+                                                !!tspecisset(&conn[i].timer1Thresh),
+                                                !!tspecisset(&conn[i].timer2Thresh),
+                                                !!tspecisset(&conn[i].timer3Thresh));
+                                }
+                        }
+                }
+                /*
                  * Idle servers do not need 100-us wakeups. Keep the original
                  * granularity whenever any connection has a pending deadline
                  * or is in data state. epoll still wakes immediately for
