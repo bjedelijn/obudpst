@@ -46,7 +46,7 @@ internal sealed class SpeedtestWindow : Window
 #else
     private readonly bool customer = false;
 #endif
-    private readonly TextBox server = new() { Text = "speedtest01.nikhef.qonnected.net", MinWidth = 260 };
+    private readonly TextBox server = new() { Text = "speedtest.nikhef.qonnected.net", MinWidth = 260 };
     private readonly ComboBox protocol = new() { MinWidth = 150 };
     private readonly TextBox port = new() { Text = "24601", Width = 85 };
     private readonly ComboBox direction = new() { MinWidth = 160 };
@@ -248,7 +248,7 @@ internal sealed record SpeedtestSettings(string Server, int ModernPort,
     {
         var folder = AppContext.BaseDirectory;
         if (!customer)
-            return new("speedtest01.nikhef.qonnected.net", 24601,
+            return new("speedtest.nikhef.qonnected.net", 24601,
                 Path.Combine(folder, "udpst.exe"), true);
 
         var path = Path.Combine(folder, "onvi-settings.json");
