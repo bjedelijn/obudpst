@@ -718,7 +718,10 @@ int service_setupresp(int connindex) {
                 i   = validate_auth(c->protocolVer, c->clientKey, c->serverKey, (unsigned char *) &cHdrSR->authMode,
                                     (unsigned char *) cHdrSR, CHSR_SIZE_CVER);
                 if (i > 0) {
-                        var                = sprintf(scratch, "ERROR: Authentication failure of setup response from server");
+                        var                = sprintf(scratch, "ERROR: Authentication failure of setup response from server (authMode=%u, responseKeyId=%u, requestedKeyId=%d, derivedKeysReady=%s, responseCode=%u)",
+                                             (unsigned int)cHdrSR->authMode, (unsigned int)cHdrSR->keyId, conf.keyId,
+                                             memcmp(c->clientKey, c->serverKey, SHA256_KEY_LEN) != 0 ? "yes" : "no",
+                                             (unsigned int)cHdrSR->cmdResponse);
                         repo.endTimeStatus = CHSR_CRSP_ERRBASE + CHSR_CRSP_AUTHFAIL; // ErrorStatus
                 } else if (i < 0) {
                         var                = sprintf(scratch, "ERROR: Authentication time invalid in setup response from server");
