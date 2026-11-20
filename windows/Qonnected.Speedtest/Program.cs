@@ -65,8 +65,8 @@ internal sealed class SpeedtestWindow : Window
     internal SpeedtestWindow()
     {
         Title = customer ? "Onvi Speedtest" : "Qonnected NOC Speedtest";
-        Width = customer ? 560 : 760;
-        Height = customer ? 510 : 680;
+        Width = customer ? 600 : 800;
+        Height = customer ? 580 : 760;
         MinWidth = 460;
         MinHeight = 510;
         Background = new SolidColorBrush(Color.FromRgb(247, 246, 251));
@@ -92,9 +92,16 @@ internal sealed class SpeedtestWindow : Window
         direction.Items.Add("Download + Upload");
         direction.SelectedIndex = 2;
 
-        var layout = new StackPanel { Margin = new Thickness(28) };
-        var scroll = new ScrollViewer { Content = layout, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
-        Content = scroll;
+        var layout = new StackPanel();
+        var grid = new Grid { Margin = new Thickness(28) };
+        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        var inputScroll = new ScrollViewer { Content = layout, VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
+        Grid.SetRow(inputScroll, 0);
+        grid.Children.Add(inputScroll);
+        Content = grid;
         var brand = LoadBrandImage(customer);
         if (brand is not null)
         {
@@ -144,7 +151,10 @@ internal sealed class SpeedtestWindow : Window
         start.Click += async (_, _) => await RunTestAsync(settings);
         layout.Children.Add(start);
         layout.Children.Add(status);
-        layout.Children.Add(result);
+        result.MinHeight = 100;
+        result.Margin = new Thickness(0, 8, 0, 0);
+        Grid.SetRow(result, 1);
+        grid.Children.Add(result);
         if (!customer)
         {
             var actions = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 10, 0, 0) };
@@ -153,7 +163,8 @@ internal sealed class SpeedtestWindow : Window
             export.Click += (_, _) => ExportJson();
             actions.Children.Add(copy);
             actions.Children.Add(export);
-            layout.Children.Add(actions);
+            Grid.SetRow(actions, 2);
+            grid.Children.Add(actions);
         }
     }
 
