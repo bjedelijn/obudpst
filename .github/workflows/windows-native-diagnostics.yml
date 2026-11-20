@@ -14,9 +14,26 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Restore cached static OpenSSL
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/vcpkg-bincache
+          key: vcpkg-openssl-x64-windows-static-${{ runner.os }}-${{ hashFiles('.github/workflows/windows-gui.yml') }}
+          restore-keys: |
+            vcpkg-openssl-x64-windows-static-${{ runner.os }}-
+      - name: Install static OpenSSL
+        shell: pwsh
+        env:
+          VCPKG_DEFAULT_BINARY_CACHE: ${{ runner.temp }}/vcpkg-bincache
+        run: |
+          New-Item -ItemType Directory -Force "$env:VCPKG_DEFAULT_BINARY_CACHE" | Out-Null
+          & "$env:VCPKG_INSTALLATION_ROOT/vcpkg.exe" install openssl:x64-windows-static
+          if ($LASTEXITCODE -ne 0) { throw "OpenSSL installation failed" }
       - name: Configure native project
         shell: pwsh
-        run: cmake -S . -B build-windows -A x64 -DDISABLE_INT_TIMER=ON
+        run: |
+          cmake -S . -B build-windows -A x64 -DDISABLE_INT_TIMER=ON "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows-static
+          if ($LASTEXITCODE -ne 0) { throw "CMake configuration failed" }
       - name: Build existing Windows sending-rate module
         shell: pwsh
         run: cmake --build build-windows --config Release --target udpst_win32_srates
