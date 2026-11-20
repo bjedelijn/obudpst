@@ -50,6 +50,7 @@ internal sealed class SpeedtestWindow : Window
     private readonly ComboBox protocol = new() { MinWidth = 150 };
     private readonly TextBox port = new() { Text = "24601", Width = 85 };
     private readonly ComboBox direction = new() { MinWidth = 160 };
+    private readonly ComboBox ipVersion = new() { MinWidth = 160 };
     private readonly PasswordBox authenticationKey = new();
     private readonly TextBox result = new() { IsReadOnly = true, AcceptsReturn = true,
         VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
@@ -91,6 +92,10 @@ internal sealed class SpeedtestWindow : Window
         direction.Items.Add("Upload");
         direction.Items.Add("Download + Upload");
         direction.SelectedIndex = 2;
+        ipVersion.Items.Add("Automatisch");
+        ipVersion.Items.Add("IPv4");
+        ipVersion.Items.Add("IPv6");
+        ipVersion.SelectedIndex = 0;
 
         var layout = new StackPanel();
         var grid = new Grid { Margin = new Thickness(28) };
@@ -125,6 +130,7 @@ internal sealed class SpeedtestWindow : Window
             layout.Children.Add(Labeled("UDP-controlpoort", port));
             layout.Children.Add(Labeled("Authenticatiesleutel (optioneel, niet opgeslagen)", authenticationKey));
             layout.Children.Add(Labeled("Richting", direction));
+            layout.Children.Add(Labeled("IP-versie", ipVersion));
         }
         else
         {
@@ -233,7 +239,7 @@ internal sealed class SpeedtestWindow : Window
             {
                 status.Text = option == "-d" ? "Downloadmeting..." : "Uploadmeting...";
                 var raw = await EngineRunner.RunAsync(executable, testHost, testPort, option, selectedProtocol,
-                    authenticationKey.Password);
+                    authenticationKey.Password, customer ? 0 : ipVersion.SelectedIndex);
                 using var parsed = JsonDocument.Parse(raw);
                 reports.Add(parsed.RootElement.Clone());
             }
@@ -244,6 +250,7 @@ internal sealed class SpeedtestWindow : Window
                 server = testHost,
                 control_port = testPort,
                 engine = selectedProtocol,
+                ip_version = customer ? "Automatisch" : ipVersion.SelectedItem?.ToString(),
                 results = reports
             }, new JsonSerializerOptions { WriteIndented = true });
             result.Text = customer ? BuildCustomerSummary(reports) : lastJson;
@@ -343,7 +350,7 @@ internal static class EmbeddedEngine
 
 internal static class EngineRunner
 {
-    internal static async Task<string> RunAsync(string exe, string host, int port, string direction, string protocol, string? authenticationKey)
+    internal static async Task<string> RunAsync(string exe, string host, int port, string direction, string protocol, string? authenticationKey, int ipVersion)
     {
         if (!File.Exists(exe)) throw new IOException(
             "TR-471 Windows-meetengine ontbreekt: " + Path.GetFileName(exe));
@@ -366,6 +373,8 @@ internal static class EngineRunner
             process.StartInfo.ArgumentList.Add("-a");
             process.StartInfo.ArgumentList.Add(authenticationKey);
         }
+        if (ipVersion == 1) process.StartInfo.ArgumentList.Add("-4");
+        else if (ipVersion == 2) process.StartInfo.ArgumentList.Add("-6");
         foreach (var arg in new[] { "-f", "json", "-p", port.ToString(), direction, host })
             process.StartInfo.ArgumentList.Add(arg);
         if (!process.Start()) throw new InvalidOperationException("Kan meetengine niet starten.");
