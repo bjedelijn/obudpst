@@ -1103,6 +1103,25 @@ int proc_parameters(int argc, char **argv, int fd) {
         }
 
         //
+        // Optional server-only fixed UDP test port range. Keep default ephemeral behavior.
+        // Example: UDPST_DATA_PORT_RANGE=40000-40499
+        if (repo.isServer) {
+                const char *range = getenv("UDPST_DATA_PORT_RANGE");
+                if (range != NULL && *range != '\0') {
+                        int first = 0, last = 0;
+                        char tail = '\0';
+                        if (sscanf(range, "%d-%d%c", &first, &last, &tail) != 2 ||
+                            first < 1 || last > 65535 || first > last ||
+                            (conf.controlPort >= first && conf.controlPort <= last)) {
+                                var = sprintf(scratch, "ERROR: Invalid UDPST_DATA_PORT_RANGE (expected START-END, excluding control port)\n");
+                                var = write(fd, scratch, var);
+                                return ERROR_CONF_GENERIC;
+                        }
+                        conf.dataPortStart = first;
+                        conf.dataPortEnd = last;
+                }
+        }
+
         // Continue to initialize non-zero configuration data
         //
         if (!repo.isServer) {

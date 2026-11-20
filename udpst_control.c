@@ -1848,7 +1848,34 @@ int sock_mgmt(int connindex, char *host, int port, char *ip, int action) {
                                         continue;
                                 }
                         }
-                        if (bind(fd, ai->ai_addr, ai->ai_addrlen) == -1) {
+                        // Restrict dynamically allocated server test sockets to the
+                        // configured range, without changing the system ephemeral range.
+                        if (repo.isServer && port == 0 && conf.dataPortStart > 0) {
+                                struct sockaddr_storage local;
+                                int candidate, bound = FALSE;
+                                for (candidate = conf.dataPortStart; candidate <= conf.dataPortEnd; candidate++) {
+                                        memset(&local, 0, sizeof(local));
+                                        memcpy(&local, ai->ai_addr, ai->ai_addrlen);
+                                        if (ai->ai_family == AF_INET)
+                                                ((struct sockaddr_in *) &local)->sin_port = htons((uint16_t) candidate);
+                                        else if (ai->ai_family == AF_INET6)
+                                                ((struct sockaddr_in6 *) &local)->sin6_port = htons((uint16_t) candidate);
+                                        else
+                                                break;
+                                        if (bind(fd, (struct sockaddr *) &local, ai->ai_addrlen) == 0) {
+                                                bound = TRUE;
+                                                break;
+                                        }
+                                        if (errno != EADDRINUSE)
+                                                break;
+                                }
+                                if (!bound) {
+                                        var = sprintf(scratch, "BIND ERROR: UDP data port range exhausted or unavailable (%d-%d)\n",
+                                                      conf.dataPortStart, conf.dataPortEnd);
+                                        close(fd);
+                                        continue;
+                                }
+                        } else if (bind(fd, ai->ai_addr, ai->ai_addrlen) == -1) {
                                 var = sprintf(scratch, "BIND ERROR: %s (%s:%d)\n", strerror(errno), host, port);
                                 if (errno == EINVAL && ai->ai_family == AF_INET6) {
                                         var += sprintf(&scratch[var], "%s\n",

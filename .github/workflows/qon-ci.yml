@@ -1,0 +1,27 @@
+name: Qonnected UDPST Modern — Build & Test
+on:
+  push:
+    branches: [qon/ci-tests, qon/legacy, qon/modern]
+  pull_request:
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler: [gcc, clang]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build libssl-dev
+      - name: Configure
+        env:
+          CC: ${{ matrix.compiler }}
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
+      - name: Build
+        run: cmake --build build --parallel 2
+      - name: Executable exists
+        run: test -x build/udpst
+      - name: Python regression tests
+        run: python3 -m unittest discover -s tests -p 'test_baseline.py' -v && python3 -m unittest discover -s tests -p 'test_port_range_source.py' -v

@@ -1,0 +1,52 @@
+name: Build UDPST release candidate artifacts
+on:
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: "Candidate channel (no publication)"
+        type: choice
+        required: true
+        options:
+          - beta
+          - rc
+      line:
+        description: "Source line; this branch currently supports modern only"
+        type: choice
+        required: true
+        options:
+          - modern
+permissions:
+  contents: read
+jobs:
+  candidate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build tools
+        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build libssl-dev
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+      - name: Build
+        run: cmake --build build --parallel 2
+      - name: Verify binary
+        run: test -x build/udpst
+      - name: Run scoped regressions
+        run: |
+          python3 -m unittest discover -s tests -p 'test_baseline.py' -v
+          python3 -m unittest discover -s tests -p 'test_port_range_source.py' -v
+      - name: Package binary and metadata
+        shell: bash
+        run: |
+          mkdir -p candidate
+          cp build/udpst candidate/udpst
+          cp README.md RELEASING.md candidate/
+          printf 'commit=%s\nchannel=%s\nline=%s\n' "$GITHUB_SHA" "${{ inputs.channel }}" "${{ inputs.line }}" > candidate/BUILD-INFO.txt
+          tar -czf udpst-${{ inputs.line }}-${{ inputs.channel }}-${GITHUB_SHA:0:12}-linux-amd64.tar.gz -C candidate .
+          sha256sum udpst-*.tar.gz > SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: udpst-${{ inputs.line }}-${{ inputs.channel }}-candidate
+          path: |
+            udpst-*.tar.gz
+            SHA256SUMS
+          retention-days: 14
