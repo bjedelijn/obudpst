@@ -8,6 +8,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using System.Windows.Shapes;
 
 namespace Qonnected.Speedtest;
 
@@ -68,7 +69,9 @@ internal sealed class SpeedtestWindow : Window
         Width = customer ? 560 : 760;
         Height = customer ? 510 : 680;
         MinWidth = 460;
-        MinHeight = 410;
+        MinHeight = 510;
+        Background = new SolidColorBrush(Color.FromRgb(247, 246, 251));
+        FontFamily = new FontFamily("Segoe UI");
 
         // The Onvi edition uses a separately deployed, locked configuration.
         // Do not silently use internal hostnames or guessed public endpoints.
@@ -90,7 +93,7 @@ internal sealed class SpeedtestWindow : Window
         direction.Items.Add("Download + Upload");
         direction.SelectedIndex = 2;
 
-        var layout = new StackPanel { Margin = new Thickness(22) };
+        var layout = new StackPanel { Margin = new Thickness(28) };
         var scroll = new ScrollViewer { Content = layout, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
         Content = scroll;
         var brand = LoadBrandImage(customer);
@@ -104,8 +107,9 @@ internal sealed class SpeedtestWindow : Window
             Icon = brand;
         }
         layout.Children.Add(new TextBlock {
+            Foreground = new SolidColorBrush(Color.FromRgb(40, 29, 82)),
             Text = customer ? "Onvi internetsnelheid meten" : "Qonnected NOC — TR-471 Speedtest",
-            FontSize = 23, FontWeight = FontWeights.SemiBold,
+            FontSize = 26, FontWeight = FontWeights.Bold,
             Margin = new Thickness(0, 0, 0, 12)
         });
         if (!customer)
@@ -126,7 +130,18 @@ internal sealed class SpeedtestWindow : Window
         }
         if (customer)
             layout.Children.Add(Labeled("Authenticatiesleutel (optioneel, niet opgeslagen)", authenticationKey));
-        start.Margin = new Thickness(0, 8, 0, 8);
+        start.Margin = new Thickness(0, 14, 0, 12);
+        start.Background = new SolidColorBrush(Color.FromRgb(40, 29, 82));
+        start.Foreground = Brushes.White;
+        start.BorderThickness = new Thickness(0);
+        start.FontWeight = FontWeights.SemiBold;
+        start.FontSize = 15;
+        status.Foreground = new SolidColorBrush(Color.FromRgb(70, 56, 106));
+        status.FontWeight = FontWeights.SemiBold;
+        result.Background = Brushes.White;
+        result.BorderBrush = new SolidColorBrush(Color.FromRgb(215, 208, 228));
+        result.Padding = new Thickness(12);
+        result.FontSize = 12;
         start.Click += async (_, _) => await RunTestAsync(settings);
         layout.Children.Add(start);
         layout.Children.Add(status);
@@ -161,7 +176,16 @@ internal sealed class SpeedtestWindow : Window
     private static FrameworkElement Labeled(string name, UIElement input)
     {
         var panel = new StackPanel { Margin = new Thickness(0, 0, 0, 10) };
-        panel.Children.Add(new TextBlock { Text = name, Margin = new Thickness(0, 0, 0, 4) });
+        panel.Children.Add(new TextBlock { Text = name, FontWeight = FontWeights.SemiBold,
+            Foreground = new SolidColorBrush(Color.FromRgb(40, 29, 82)),
+            Margin = new Thickness(0, 0, 0, 5) });
+        if (input is Control control)
+        {
+            control.MinHeight = 32;
+            control.FontSize = 13;
+            control.BorderBrush = new SolidColorBrush(Color.FromRgb(204, 194, 220));
+            control.Background = Brushes.White;
+        }
         panel.Children.Add(input);
         return panel;
     }
