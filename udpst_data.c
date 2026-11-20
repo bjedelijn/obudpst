@@ -2097,6 +2097,20 @@ int output_currate(int connindex) {
                                       rttavg, c->sisSav.rttVarMaximum, mbps, intfrate);
                         send_proc(errConn, scratch, var);
                 } else if (conf.jsonOutput && connindex == aggConn) {
+                        /*
+                         * Opt-in GUI telemetry: stderr stays separate from the final
+                         * JSON on stdout. Emit the already calculated subinterval
+                         * capacity, never a timer-derived approximation.
+                         */
+                        const char *live_intervals = getenv("UDPST_LIVE_INTERVALS");
+                        if (live_intervals != NULL && strcmp(live_intervals, "1") == 0) {
+                                double lossratio = sent > 0.0 ?
+                                        (double) c->sisSav.seqErrLoss / sent : 0.0;
+                                fprintf(stderr,
+                                        "UDPST_LIVE:{\\"schema\\":\\"udpst-live-v1\\",\\"type\\":\\"interval\\",\\"interval\\":%u,\\"capacity_mbps\\":%.2f,\\"loss_ratio\\":%.9f}\\n",
+                                        (unsigned int)c->subIntCount, mbps, lossratio);
+                                fflush(stderr);
+                        }
                         //
                         // Create JSON sub-interval array if needed
                         //
