@@ -21,9 +21,7 @@ internal static class Program
         {
             try
             {
-                if (!byte.TryParse(authenticationKeyId.Text, out var keyId) && !customer && !string.IsNullOrEmpty(authenticationKey.Password))
-                throw new InvalidOperationException("Sleutel-ID moet tussen 0 en 255 liggen.");
-            var executable = EmbeddedEngine.Resolve();
+                var executable = EmbeddedEngine.Resolve();
                 using var stream = File.OpenRead(executable);
                 if (stream.Length < 1024 || stream.ReadByte() != 'M' || stream.ReadByte() != 'Z')
                     throw new InvalidDataException("Embedded engine is not a valid PE executable.");
@@ -237,6 +235,9 @@ internal sealed class SpeedtestWindow : Window
         result.Text = "";
         try
         {
+            byte keyId = 0;
+            if (!customer && !byte.TryParse(authenticationKeyId.Text, out keyId))
+                throw new InvalidOperationException("Sleutel-ID moet tussen 0 en 255 liggen.");
             var executable = EmbeddedEngine.Resolve();
             var reports = new List<JsonElement>();
             foreach (var option in directions)
