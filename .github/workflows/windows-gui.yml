@@ -1,0 +1,135 @@
+name: Windows WPF GUI build
+on:
+  push:
+    branches: [feature/qonnected-windows-apps]
+  pull_request:
+  workflow_dispatch:
+jobs:
+  gui:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Generate Qonnected Windows icon from supplied SVG
+        shell: pwsh
+        run: |
+          choco install imagemagick -y --no-progress
+          $source = "windows/Qonnected.Speedtest/branding/Qonnected-beeldmerk.svg"
+          $target = "windows/Qonnected.Speedtest/branding/Qonnected-NOC.ico"
+          # Preserve the original Q artwork and place it on a high-contrast rounded tile.
+          $magick = (Get-Command magick.exe -ErrorAction Stop).Source
+          & $magick -size 256x256 xc:none -fill '#F0E5F3' -draw "roundrectangle 0,0 255,255 54,54" "$env:RUNNER_TEMP/q-tile.png"
+          & $magick -background none -density 400 $source -resize 198x198 "$env:RUNNER_TEMP/q-mark.png"
+          & $magick "$env:RUNNER_TEMP/q-tile.png" "$env:RUNNER_TEMP/q-mark.png" -gravity center -compose over -composite -define icon:auto-resize=256,128,64,48,32,16 $target
+          if ($LASTEXITCODE -ne 0) { throw "Icon generation failed" }
+      - name: Prepare vcpkg binary cache
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force "$env:RUNNER_TEMP/vcpkg-bincache" | Out-Null
+      - name: Restore cached vcpkg OpenSSL binaries
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/vcpkg-bincache
+          key: vcpkg-openssl-x64-windows-static-${{ runner.os }}-${{ hashFiles('.github/workflows/windows-gui.yml') }}
+          restore-keys: |
+            vcpkg-openssl-x64-windows-static-${{ runner.os }}-
+      - name: Install static OpenSSL for native Windows authentication
+        shell: pwsh
+        env:
+          VCPKG_DEFAULT_BINARY_CACHE: ${{ runner.temp }}/vcpkg-bincache
+        run: |
+          & "$env:VCPKG_INSTALLATION_ROOT/vcpkg.exe" install openssl:x64-windows-static
+          if ($LASTEXITCODE -ne 0) { throw "Static OpenSSL install failed" }
+      - name: Build native Windows UDPST CLI
+        shell: pwsh
+        run: |
+          cmake -S . -B build-native -A x64 -DDISABLE_INT_TIMER=ON "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows-static
+          if ($LASTEXITCODE -ne 0) { throw "Native CMake configuration failed" }
+          cmake --build build-native --config Release --target udpst_win32_link_probe
+          if ($LASTEXITCODE -ne 0) { throw "Native UDPST link failed" }
+          $engine = "build-native/Release/udpst.exe"
+          if (-not (Test-Path $engine)) { throw "Native udpst.exe missing" }
+          New-Item -ItemType Directory -Force "windows/Qonnected.Speedtest/native" | Out-Null
+          Copy-Item $engine "windows/Qonnected.Speedtest/native/udpst.exe" -Force
+      - name: Cross-check UDPST KBKDF and HMAC offline
+        shell: pwsh
+        run: |
+          cmake --build build-native --config Release --target udpst_auth_kdf_selftest
+          if ($LASTEXITCODE -ne 0) { throw "Authentication self-test build failed" }
+          & "build-native/Release/udpst_auth_kdf_selftest.exe"
+          if ($LASTEXITCODE -ne 0) { throw "Authentication self-test failed" }
+      - name: Verify native authentication is compiled in
+        shell: pwsh
+        run: |
+          $exe = (Resolve-Path "build-native/Release/udpst.exe").Path
+          $output = & $exe -a test-key -S 2>&1 | Out-String
+          if ($output -match "Built without authentication functionality") { throw "Authentication was disabled in native engine" }
+          if ($LASTEXITCODE -ne 0) { throw "Native authenticated CLI startup failed: $output" }
+      - name: Record native CLI startup verification
+        shell: pwsh
+        run: |
+          "Native authentication and startup smoke test passed in previous step." | Set-Content native-cli-startup.txt
+          "Dependency inspection deferred; static OpenSSL and CRT are configured in CMake." | Set-Content native-cli-dependencies.txt
+      - name: Publish standalone NOC GUI with embedded native engine
+        run: dotnet publish windows/Qonnected.Speedtest/Qonnected.Speedtest.csproj -c Release -r win-x64 -o dist
+      - name: Publish standalone Onvi GUI with embedded native engine
+        run: dotnet publish windows/Qonnected.Speedtest/Qonnected.Speedtest.csproj -c Release -r win-x64 -p:SpeedtestEdition=Onvi -o dist-onvi
+      - name: Publish standalone CLI artifact
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist-cli | Out-Null
+          Copy-Item "build-native/Release/udpst.exe" "dist-cli/udpst.exe"
+      - name: Verify separate GUI artifacts
+        shell: pwsh
+        run: |
+          $noc = "dist/Qonnected.Speedtest.exe"
+          $onvi = "dist-onvi/Onvi.Speedtest.exe"
+          if (-not (Test-Path $noc)) { throw "Missing Qonnected GUI executable: $noc" }
+          if (-not (Test-Path $onvi)) { throw "Missing Onvi GUI executable: $onvi" }
+          if (Test-Path "dist-onvi/Qonnected.Speedtest.exe") { throw "Onvi package unexpectedly contains NOC executable" }
+          if ((Test-Path "dist/udpst.exe") -or (Test-Path "dist-onvi/udpst.exe")) { throw "GUI artifacts must not require a sidecar udpst.exe" }
+          Write-Host "Both distinct standalone GUI executables are present."
+      - name: Verify embedded engine extraction in both GUI executables (offline)
+        shell: pwsh
+        timeout-minutes: 2
+        run: |
+          foreach ($edition in @("dist/Qonnected.Speedtest.exe", "dist-onvi/Onvi.Speedtest.exe")) {
+            $marker = Join-Path $env:RUNNER_TEMP ((Split-Path $edition -Leaf) + ".engine-check.txt")
+            if (Test-Path $marker) { Remove-Item $marker }
+            $proc = Start-Process -FilePath (Resolve-Path $edition).Path -ArgumentList @("--verify-embedded-engine", $marker) -PassThru
+            try {
+              if (-not $proc.WaitForExit(15000)) {
+                Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+                throw "Embedded engine check timed out for $edition"
+              }
+              if ($proc.ExitCode -ne 0) { throw "Embedded engine check failed for $edition (exit $($proc.ExitCode))" }
+              if (-not (Test-Path $marker)) { throw "Missing engine verification marker for $edition" }
+              $message = Get-Content $marker -Raw
+              if ($message -notmatch "^Embedded native Windows engine extracted") { throw "Unexpected result for $edition : $message" }
+              Write-Host "$edition : $message"
+            } finally {
+              if (-not $proc.HasExited) { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue }
+              $proc.Dispose()
+            }
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: onvi-speedtest-gui-dev
+          path: dist-onvi/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: qonnected-speedtest-gui-dev
+          path: dist/
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: udpst-windows-runtime-diagnostics
+          path: |
+            native-cli-dependencies.txt
+            native-cli-startup.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: udpst-windows-cli-dev
+          path: dist-cli/

@@ -100,7 +100,45 @@
 #include <openssl/x509.h>
 #endif
 #else
+#ifdef _WIN32
+#include "platform/win32/udpst_win32_platform.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <errno.h>
+#include <limits.h>
+#include <time.h>
+#include <fcntl.h>
+#include <io.h>
+#include <signal.h>
+#include "platform/win32/udpst_win32_getopt.h"
+/* MSVC equivalents for POSIX CRT functions used by the client. */
+#define random rand
+#define srandom srand
+#define strcasecmp _stricmp
+#define strtok_r strtok_s
+/* CRT descriptors are used for console/file connections, not Winsock SOCKETs. */
+#ifndef STDIN_FILENO
+#define STDIN_FILENO 0
+#endif
+#ifndef STDOUT_FILENO
+#define STDOUT_FILENO 1
+#endif
+#ifndef STDERR_FILENO
+#define STDERR_FILENO 2
+#endif
+/* NAME_MAX is only used to limit filenames printed in error messages. */
+#ifndef NAME_MAX
+#define NAME_MAX 255
+#endif
+#include <sys/stat.h>
+#ifdef AUTH_KEY_ENABLE
+#include <openssl/hmac.h>
+#include <openssl/x509.h>
+#endif
+#else
 #include "../udpst_alt1.h"
+#endif
 #endif
 //
 #include "cJSON.h"
@@ -111,7 +149,16 @@
 #include "udpst_data.h"
 #include "udpst_srates.h"
 #ifndef __linux__
+#ifndef _WIN32
 #include "../udpst_alt2.h"
+#endif
+#endif
+
+#ifdef _WIN32
+/* Keep UTC scheduler timestamps consistent with the Windows FILETIME adapter. */
+#define UDPST_UPDATE_SYSTEM_CLOCK() udpst_win32_utc_now(&repo.systemClock)
+#else
+#define UDPST_UPDATE_SYSTEM_CLOCK() clock_gettime(CLOCK_REALTIME, &repo.systemClock)
 #endif
 
 //----------------------------------------------------------------------------
@@ -141,7 +188,13 @@ struct repository repo;                       // Repository of global data
 struct connection *conn;                      // Connection table (array)
 static volatile sig_atomic_t sig_alrm = 0;    // Interrupt indicator
 static volatile sig_atomic_t sig_exit = 0;    // Interrupt indicator
+#ifdef _WIN32
+/* WSAPoll returns connection indices without narrowing SOCKET handles. */
+static udpst_win32_poll_entry win_poll_entries[MAX_EPOLL_EVENTS];
+static unsigned int win_ready_indices[MAX_EPOLL_EVENTS];
+#else
 struct epoll_event epoll_events[MAX_EPOLL_EVENTS];
+#endif
 char *boolText[]    = {"Disabled", "Enabled"};
 char *rateAdjAlgo[] = {"B", "C"}; // Aligned to CHTA_RA_ALGO_x
 //
@@ -155,14 +208,29 @@ char json_errbuf[STRING_SIZE], json_errbuf2[STRING_SIZE];
 // Program entry point
 //
 int main(int argc, char **argv) {
+#ifndef _WIN32
         pid_t pid;
+#endif
         int i, j, var, var2, readyfds, fdpass, pristatus, secstatus;
+#ifdef _WIN32
+        int appstatus = STATUS_ERROR, outputfd = _fileno(stdout), logfilefd = -1;
+#else
         int appstatus = STATUS_ERROR, outputfd = STDOUT_FILENO, logfilefd = -1;
         struct itimerval itime;
         struct sigaction saction;
+#endif
         struct stat statbuf;
         struct perfStatsMaximums *psM = &repo.psMaximums;
         struct perfStatsAverages *psA = &repo.psAverages;
+
+#ifdef _WIN32
+        /* proc_parameters performs address resolution: Winsock must be ready first. */
+        if (udpst_win32_net_init() != 0) {
+                fprintf(stderr, "ERROR: WSAStartup failed (%d)\\n", WSAGetLastError());
+                return STATUS_INIT_ERRBASE + ERROR_INIT_GENERIC;
+        }
+        atexit(udpst_win32_net_cleanup);
+#endif
 
         //
         // Sanity check that rate adjustment algorithm identifiers align with protocol
@@ -208,6 +276,15 @@ int main(int argc, char **argv) {
         //
         // Execute as daemon if requested
         //
+#ifdef _WIN32
+        /* POSIX fork/setsid daemonization has no Windows equivalent.
+         * Reject this mode rather than silently ignoring the request. */
+        if (conf.isDaemon) {
+                var = sprintf(scratch, "ERROR: Daemon mode is unsupported on Windows; run as a console process.\n");
+                _write(outputfd, scratch, (unsigned int)var);
+                return STATUS_CONF_ERRBASE + ERROR_CONF_GENERIC;
+        }
+#else
         if (conf.isDaemon) {
                 //
                 // Open log file before child creation
@@ -250,13 +327,23 @@ int main(int argc, char **argv) {
                                 close(i);
                 }
         }
+#endif /* !_WIN32 */
 
         //
         // Initialize local copy of system time clock and seed RNG
         //
-        clock_gettime(CLOCK_REALTIME, &repo.systemClock);
+#ifdef _WIN32
+        if (udpst_win32_utc_now(&repo.systemClock) != 0) {
+                fprintf(stderr, "ERROR: Windows UTC clock initialization failed\n");
+                return STATUS_INIT_ERRBASE + ERROR_INIT_GENERIC;
+        }
+        tspeccpy(&repo.startTime, &repo.systemClock);
+        srand((unsigned int) repo.systemClock.tv_nsec);
+#else
+        UDPST_UPDATE_SYSTEM_CLOCK();
         tspeccpy(&repo.startTime, &repo.systemClock);
         srandom((unsigned int) repo.systemClock.tv_nsec);
+#endif
 
         //
         // Print banner or initialize JSON output object
@@ -379,7 +466,7 @@ int main(int argc, char **argv) {
                 var = write(outputfd, scratch, var);
                 return STATUS_INIT_ERRBASE + ERROR_INIT_GENERIC;
         }
-        clock_gettime(CLOCK_REALTIME, &repo.systemClock); // Reinitialize local copy of system time clock
+        UDPST_UPDATE_SYSTEM_CLOCK(); // Reinitialize local copy of system time clock
 #endif
 
         //
@@ -412,6 +499,16 @@ int main(int argc, char **argv) {
         //
         // Set exit signal handler
         //
+#ifdef _WIN32
+        /* MSVC CRT supports SIGINT and SIGTERM, but not POSIX sigaction,
+         * SIGQUIT or SIGTSTP.  Console service handling is separate work. */
+        if (signal(SIGINT, signal_exit) == SIG_ERR ||
+            signal(SIGTERM, signal_exit) == SIG_ERR) {
+                var = sprintf(scratch, "ERROR: Unable to install Windows CRT exit signal handlers\n");
+                _write(outputfd, scratch, (unsigned int)var);
+                return STATUS_INIT_ERRBASE + ERROR_INIT_GENERIC;
+        }
+#else
         saction.sa_handler = signal_exit;
         sigemptyset(&saction.sa_mask);
         saction.sa_flags = 0;
@@ -426,18 +523,29 @@ int main(int argc, char **argv) {
                 return STATUS_INIT_ERRBASE + ERROR_INIT_GENERIC;
         }
 
+#endif /* !_WIN32 */
+
         //
         // Open epoll file descriptor to process I/O events
         //
+#ifndef _WIN32
         if ((repo.epollFD = epoll_create1(0)) < 0) {
                 var = sprintf(scratch, "ERROR: Unable to open epoll file descriptor\n");
                 var = write(outputfd, scratch, var);
                 return STATUS_INIT_ERRBASE + ERROR_INIT_GENERIC;
         }
+#else
+        /* Windows sockets are monitored through WSAPoll, not an epoll FD.
+         * Keep the sentinel until the connection event loop is ported. */
+        repo.epollFD = -1;
+#endif
 
         //
         // Set standard FDs as non-blocking
         //
+#ifndef _WIN32
+        /* POSIX fcntl() applies to Unix file descriptors. Windows CRT
+         * console handles are not Winsock sockets and cannot use it. */
         pristatus = 0;
         var       = fcntl(STDIN_FILENO, F_GETFL, 0);
         pristatus += fcntl(STDIN_FILENO, F_SETFL, var | O_NONBLOCK);
@@ -451,6 +559,8 @@ int main(int argc, char **argv) {
                 appstatus = STATUS_INIT_ERRBASE + ERROR_INIT_GENERIC;
                 sig_exit  = TRUE;
         }
+
+#endif /* !_WIN32 */
 
         //
         // Create default connection for console, log file or null output
@@ -569,9 +679,41 @@ int main(int argc, char **argv) {
                 // Await ready FD(s) OR an alarm signal interrupt
                 //
                 var = -1;
+#ifdef _WIN32
+                /* Windows has no POSIX interval timer here. Poll at a bounded
+                 * cadence so timers advance without a busy-spin or an
+                 * indefinitely blocked WSAPoll call. */
+                var = 10;
+#else
                 if (sig_alrm > 0)
                         var = 0; // Return immediately if alarm was already received
+#endif
+#ifdef _WIN32
+                {
+                        ULONG poll_count = 0;
+                        int poll_index;
+                        for (poll_index = 0; poll_index <= repo.maxConnIndex &&
+                             poll_count < MAX_EPOLL_EVENTS; ++poll_index) {
+                                if (conn[poll_index].type != T_UDP ||
+                                    conn[poll_index].state == S_FREE ||
+                                    conn[poll_index].winSocket == INVALID_SOCKET)
+                                        continue;
+                                win_poll_entries[poll_count].socket_handle = conn[poll_index].winSocket;
+                                win_poll_entries[poll_count].connection_index = (unsigned int)poll_index;
+                                ++poll_count;
+                        }
+                        if (poll_count != 0) {
+                                readyfds = udpst_win32_poll_connections(win_poll_entries, poll_count, var,
+                                                                          win_ready_indices, MAX_EPOLL_EVENTS);
+                        } else {
+                                /* WSAPoll rejects an empty socket set. */
+                                Sleep((DWORD)var);
+                                readyfds = 0;
+                        }
+                }
+#else
                 readyfds = epoll_wait(repo.epollFD, epoll_events, MAX_EPOLL_EVENTS, var);
+#endif
 
                 //
                 // Process FD(s)
@@ -593,14 +735,23 @@ int main(int argc, char **argv) {
                                         //
                                         // Extract connection from user data
                                         //
+#ifdef _WIN32
+                                        i = (int) win_ready_indices[j];
+#else
                                         i = (int) epoll_events[j].data.u32;
+#endif
                                         if (i < 0 || i > repo.maxConnIndex) {
                                                 if (fdpass == 0) {
                                                         var = sprintf(scratch, "ERROR: Invalid epoll_wait user data %d\n", i);
                                                         send_proc(errConn, scratch, var);
                                                 }
                                                 continue;
+#ifdef _WIN32
+                                        } else if (conn[i].state == S_FREE ||
+                                                   conn[i].winSocket == INVALID_SOCKET) {
+#else
                                         } else if (conn[i].fd < 0) {
+#endif
                                                 if (fdpass == 0) {
                                                         var = sprintf(scratch, "[%d]ERROR: Invalid fd (%d) from epoll_wait\n", i,
                                                                       conn[i].fd);
@@ -621,7 +772,7 @@ int main(int argc, char **argv) {
                                         //
                                         // Update local copy of system time clock
                                         //
-                                        clock_gettime(CLOCK_REALTIME, &repo.systemClock);
+                                        UDPST_UPDATE_SYSTEM_CLOCK();
 
                                         //
                                         // Execute primary and secondary actions
@@ -670,7 +821,7 @@ int main(int argc, char **argv) {
                         //
                         // Update local copy of system time clock
                         //
-                        clock_gettime(CLOCK_REALTIME, &repo.systemClock);
+                        UDPST_UPDATE_SYSTEM_CLOCK();
 
                         //
                         // Check each connection for timer expiry
@@ -740,7 +891,7 @@ int main(int argc, char **argv) {
                                         }
                                 }
                                 if (var2 > 0) { // Update local copy of system time clock if work was done
-                                        clock_gettime(CLOCK_REALTIME, &repo.systemClock);
+                                        UDPST_UPDATE_SYSTEM_CLOCK();
                                 }
                         }
 
@@ -776,8 +927,10 @@ int main(int argc, char **argv) {
         //
         if (logfilefd >= 0)
                 close(logfilefd);
+#ifndef _WIN32
         if (repo.epollFD >= 0)
                 close(repo.epollFD);
+#endif
         if (repo.intfFD >= 0)
                 close(repo.intfFD);
         if (repo.intfFDAlt >= 0)
@@ -796,11 +949,15 @@ int main(int argc, char **argv) {
                 free(repo.psBuffer);
 
         //
-        // Stop system timer
+        // Stop POSIX interval timer and restore POSIX descriptor flags.
+        // Windows uses neither setitimer nor fcntl on console handles.
         //
+#ifndef _WIN32
+#ifndef DISABLE_INT_TIMER
         timerclear(&itime.it_interval);
         timerclear(&itime.it_value);
         setitimer(ITIMER_REAL, &itime, NULL);
+#endif
 
         //
         // Reset standard FDs to normal
@@ -811,6 +968,7 @@ int main(int argc, char **argv) {
         fcntl(STDOUT_FILENO, F_SETFL, var & ~O_NONBLOCK);
         var = fcntl(STDERR_FILENO, F_GETFL, 0);
         fcntl(STDERR_FILENO, F_SETFL, var & ~O_NONBLOCK);
+#endif /* !_WIN32 */
 
         return appstatus;
 }

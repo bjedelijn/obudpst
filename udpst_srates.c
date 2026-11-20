@@ -65,7 +65,20 @@
 #include <openssl/x509.h>
 #endif
 #else
+#ifdef _WIN32
+#include "platform/win32/udpst_win32_platform.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <errno.h>
+#include <limits.h>
+#include <time.h>
+#include <io.h> /* _write, _fileno */
+/* Windows CRT file descriptors, not Winsock SOCKET handles. */
+#define udpst_srates_write _write
+#else
 #include "../udpst_srates_alt1.h"
+#endif
 #endif
 //
 #include "cJSON.h"
@@ -73,8 +86,13 @@
 #include "udpst_protocol.h"
 #include "udpst.h"
 #include "udpst_srates.h"
+#ifndef _WIN32
+#define udpst_srates_write write
+#endif
 #ifndef __linux__
+#ifndef _WIN32
 #include "../udpst_srates_alt2.h"
+#endif
 #endif
 
 //----------------------------------------------------------------------------
@@ -236,10 +254,10 @@ void show_sending_rates(int fd) {
                 strcpy(buf, "IPv4");
         }
         var = sprintf(scratch, "Sending Rate Table for %s (Dual Transmitters, Referenced by Index)...\n", buf);
-        var = write(fd, scratch, var);
+        var = udpst_srates_write(fd, scratch, var);
         var = sprintf(scratch, "%s) %s %s %s  + %s %s %s   %s  = %s\n", "Index", "TxInt(us)", "Payload", "Burst", "TxInt(us)",
                       "Payload", "Burst", "Add-On", "Mbps(L3/IP)");
-        var = write(fd, scratch, var);
+        var = udpst_srates_write(fd, scratch, var);
 
         //
         // Output each row
@@ -313,11 +331,11 @@ void show_sending_rates(int fd) {
                 else
                         scratch[var++] = ' ';
                 var += sprintf(&scratch[var], "= %10.2f\n", dvar); // Finalize row text
-                var = write(fd, scratch, var);
+                var = udpst_srates_write(fd, scratch, var);
         }
         if (!conf.jumboStatus) {
                 var = sprintf(scratch, "NOTE: Disabling jumbo datagram sizes may impede rates above 1 Gbps\n");
-                var = write(fd, scratch, var);
+                var = udpst_srates_write(fd, scratch, var);
         }
         return;
 }

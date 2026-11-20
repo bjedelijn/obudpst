@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>Qonnected.Speedtest</AssemblyName>
+    <ApplicationIcon Condition="Exists('branding/Qonnected-NOC.ico')">branding/Qonnected-NOC.ico</ApplicationIcon>
+    <PublishSingleFile>true</PublishSingleFile>
+    <SelfContained>true</SelfContained>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(SpeedtestEdition)' == 'Onvi'">
+    <DefineConstants>$(DefineConstants);ONVI_EDITION</DefineConstants>
+    <AssemblyName>Onvi.Speedtest</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup Condition="Exists('native/udpst.exe')">
+    <EmbeddedResource Include="native/udpst.exe" LogicalName="Qonnected.Speedtest.Native.udpst.exe" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="branding\\*.png" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

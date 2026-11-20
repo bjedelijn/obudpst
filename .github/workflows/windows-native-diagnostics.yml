@@ -1,0 +1,98 @@
+name: Windows native UDPST portability diagnostics
+on:
+  push:
+    branches: [feature/qonnected-windows-apps]
+    paths:
+      - 'udpst*.c'
+      - 'udpst*.h'
+      - 'cJSON.*'
+      - 'CMakeLists.txt'
+      - '.github/workflows/windows-native-diagnostics.yml'
+  workflow_dispatch:
+jobs:
+  native-port:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore cached static OpenSSL
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/vcpkg-bincache
+          key: vcpkg-openssl-x64-windows-static-${{ runner.os }}-${{ hashFiles('.github/workflows/windows-gui.yml') }}
+          restore-keys: |
+            vcpkg-openssl-x64-windows-static-${{ runner.os }}-
+      - name: Install static OpenSSL
+        shell: pwsh
+        env:
+          VCPKG_DEFAULT_BINARY_CACHE: ${{ runner.temp }}/vcpkg-bincache
+        run: |
+          New-Item -ItemType Directory -Force "$env:VCPKG_DEFAULT_BINARY_CACHE" | Out-Null
+          & "$env:VCPKG_INSTALLATION_ROOT/vcpkg.exe" install openssl:x64-windows-static
+          if ($LASTEXITCODE -ne 0) { throw "OpenSSL installation failed" }
+      - name: Configure native project
+        shell: pwsh
+        run: |
+          cmake -S . -B build-windows -A x64 -DDISABLE_INT_TIMER=ON "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows-static
+          if ($LASTEXITCODE -ne 0) { throw "CMake configuration failed" }
+      - name: Build existing Windows sending-rate module
+        shell: pwsh
+        run: cmake --build build-windows --config Release --target udpst_win32_srates
+      - name: Probe complete native CLI (diagnostic, expected to expose porting errors)
+        shell: pwsh
+        run: |
+          cmake --build build-windows --config Release --target udpst_win32_link_probe *> native-port-diagnostics.log
+          $code = $LASTEXITCODE
+          Get-Content native-port-diagnostics.log | Select-Object -Last 100
+          "Native link probe exit code: $code" | Out-File native-port-status.txt
+          if ($code -eq 0) {
+            $exe = "build-windows/Release/udpst.exe"
+            if (-not (Test-Path $exe)) { throw "Link succeeded but udpst.exe was not found" }
+            Write-Host "Native Windows executable exists: $exe"
+          }
+          if ($code -ne 0) {
+            Write-Warning "Native CLI is not yet portable; see diagnostic artifact. This does not indicate a working udpst.exe."
+          }
+      - name: Smoke-test native CLI startup (10s timeout per invocation)
+        shell: pwsh
+        timeout-minutes: 2
+        run: |
+          $exe = (Resolve-Path "build-windows/Release/udpst.exe" -ErrorAction SilentlyContinue)
+          if (-not $exe) {
+            "Executable missing; startup test not run." | Set-Content native-cli-smoke.txt
+            Write-Warning "No native executable available for smoke test"
+          } else {
+            $cases = @(
+              @{ Name = "sending-rate-table"; Args = @("-S") },
+              @{ Name = "invalid-option"; Args = @("--qonnected-invalid-option") }
+            )
+            foreach ($case in $cases) {
+              "===== $($case.Name) =====" | Add-Content native-cli-smoke.txt
+              $stdout = Join-Path $env:RUNNER_TEMP "udpst-$($case.Name)-stdout.txt"
+              $stderr = Join-Path $env:RUNNER_TEMP "udpst-$($case.Name)-stderr.txt"
+              $proc = Start-Process -FilePath $exe.Path -ArgumentList $case.Args -PassThru -NoNewWindow -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+              try {
+                $finished = $proc.WaitForExit(10000)
+                if (-not $finished) {
+                  Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+                  "TIMEOUT after 10 seconds" | Add-Content native-cli-smoke.txt
+                  Write-Warning "$($case.Name): timed out after 10 seconds"
+                } else {
+                  "Exit code: $($proc.ExitCode)" | Add-Content native-cli-smoke.txt
+                  Write-Host "$($case.Name): exit $($proc.ExitCode)"
+                }
+              } finally {
+                if (-not $proc.HasExited) { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue }
+                if (Test-Path $stdout) { Get-Content $stdout | Add-Content native-cli-smoke.txt }
+                if (Test-Path $stderr) { Get-Content $stderr | Add-Content native-cli-smoke.txt }
+                $proc.Dispose()
+              }
+            }
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-native-port-diagnostics
+          path: |
+            native-port-diagnostics.log
+            native-port-status.txt
+            native-cli-smoke.txt
+            build-windows/Release/udpst.exe

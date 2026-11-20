@@ -110,7 +110,22 @@
 #include <openssl/x509.h>
 #endif
 #else
+#ifdef _WIN32
+#include "platform/win32/udpst_win32_platform.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdint.h>
+#include <errno.h>
+#include <limits.h>
+#include <time.h>
+#include <math.h>
+#include <fcntl.h>
+#include <io.h>
+#include <sys/stat.h> /* _S_IREAD, _S_IWRITE */
+#else
 #include "../udpst_data_alt1.h"
+#endif
 #endif
 //
 #include "cJSON.h"
@@ -119,7 +134,9 @@
 #include "udpst.h"
 #include "udpst_data.h"
 #ifndef __linux__
+#ifndef _WIN32
 #include "../udpst_data_alt2.h"
+#endif
 #endif
 
 //----------------------------------------------------------------------------
@@ -131,10 +148,8 @@ int adjust_sending_rate(int);
 int output_currate(int);
 int output_maxrate(int);
 double get_rate(int, struct subIntStats *, int);
-#ifdef __linux__
 int socket_error(int, int, char *);
 int receive_trunc(int, int, int);
-#endif
 void sis_copy(struct subIntStats *, struct subIntStats *, BOOL);
 void output_warning(int, int);
 void upd_intf_stats(BOOL);
@@ -200,7 +215,11 @@ static void _populate_header(struct loadHdr *lHdr, struct connection *c, unsigne
 // Randomize payload of datagram (via single call of random())
 //
 static void _randomize_payload(char *buffer, unsigned int length) {
+#ifdef _WIN32
+        register long int rvar = rand(); // Windows CRT; replace with stronger generator if required
+#else
         register long int rvar = random(); // Obtain random value (0 - RAND_MAX)
+#endif
         register long int *b, *rd = (long int *) repo.randData;
         register unsigned int len = length, i;
 
@@ -530,8 +549,10 @@ static void _sendmmsg_burst(int connindex, int totalburst, int burstsize, unsign
 //
 static void _sendmsg_burst(int connindex, int totalburst, int burstsize, unsigned int payload, unsigned int addon) {
         register struct connection *c = &conn[connindex];
+#ifndef _WIN32
         struct msghdr msg;
         struct iovec iov;
+#endif
         unsigned int uvar, rttrd = 0;
         int i, j, var, senderrno;
         struct loadHdr *lHdr;
@@ -548,7 +569,9 @@ static void _sendmsg_burst(int connindex, int totalburst, int burstsize, unsigne
         //
         // Prepare send structures
         //
+#ifndef _WIN32
         memset((void *) &msg, 0, sizeof(struct msghdr));
+#endif
         if (c->randPayload) {
                 lHdr = (struct loadHdr *) repo.sndBufRand;
         } else {
@@ -574,18 +597,26 @@ static void _sendmsg_burst(int connindex, int totalburst, int burstsize, unsigne
                 //
                 // Setup corresponding message structure
                 //
+#ifndef _WIN32
                 iov.iov_base   = (void *) lHdr;
                 iov.iov_len    = (size_t) uvar;
                 msg.msg_iov    = &iov;
                 msg.msg_iovlen = 1;
+#endif
 
                 //
                 // Send a single message of our burst with a system call
                 //
                 // NOTE: Certain error conditions are expected when overloading an interface
                 //
+#ifdef _WIN32
+                /* Connected UDP sockets: one send() corresponds to one datagram. */
+                var       = send(c->winSocket, (const char *)lHdr, (int)uvar, 0);
+                senderrno = (var == SOCKET_ERROR) ? WSAGetLastError() : 0;
+#else
                 var       = sendmsg(c->fd, &msg, 0);
                 senderrno = errno;
+#endif
                 if (conf.seqNumAdjust && var <= 0) { // Adjust sequence number to correct for datagram not accepted
                         c->lpduSeqNo--;
                 }
@@ -595,7 +626,13 @@ static void _sendmsg_burst(int connindex, int totalburst, int burstsize, unsigne
                         _update_send_ps(connindex, 1, j, 0, uvar);
                 }
                 if (!conf.errSuppress) {
-                        if (var < 0 && senderrno != EAGAIN) {
+                        if (var < 0
+#ifdef _WIN32
+                            && senderrno != WSAEWOULDBLOCK
+#else
+                            && senderrno != EAGAIN
+#endif
+                        ) {
                                 //
                                 // An error of EAGAIN (Resource temporarily unavailable) indicates the send buffer is full
                                 //
@@ -2677,8 +2714,10 @@ int service_recvlprc(int connindex) {
 //
 int recv_proc(int connindex) {
         register struct connection *c = &conn[connindex];
+#ifndef _WIN32
         static struct mmsghdr mmsg[RECVMMSG_SIZE]; // Static array
         static struct iovec iov[RECVMMSG_SIZE];    // Static array
+#endif
         char *rcvbuf, *nextcmsg;
         int i, var, recvsize;
 
@@ -2704,6 +2743,16 @@ int recv_proc(int connindex) {
                         //
                         // Prepare message structures
                         //
+#ifdef _WIN32
+                        /* Windows has no recvmmsg(): receive a single connected
+                         * UDP datagram, then leave coalescing to a future port.
+                         * Never interpret a truncated UDPST header as valid. */
+                        repo.rcvDataSize = recv(c->winSocket,
+                                                repo.defBuffer, recvsize, 0);
+                        if (repo.rcvDataSize >= 0) {
+                                c->dataReady = FALSE;
+                        }
+#else
                         memset(mmsg, 0, sizeof(mmsg));
                         rcvbuf   = repo.defBuffer;
                         nextcmsg = rxCmsgBuf;
@@ -2751,15 +2800,29 @@ int recv_proc(int connindex) {
                                 c->dataReady = FALSE; // Indicate all data has been read from this connection
                         }
 #endif
+#endif /* !_WIN32 */
                 } else {
+                        #ifdef _WIN32
+                        repo.rcvDataSize = recv(c->winSocket, repo.defBuffer, recvsize, 0);
+#else
                         repo.rcvDataSize = recv(c->fd, repo.defBuffer, recvsize, 0);
+#endif
                         if (c->secAction == &service_statuspdu) {
                                 c->dataReady = FALSE; // Indicate all data has been read from this connection
                         }
                 }
         } else if (c->subType == SOCK_DGRAM) {
                 repo.remSasLen   = sizeof(repo.remSas);
+                #ifdef _WIN32
+                {
+                        int addrlen = (int)repo.remSasLen;
+                        repo.rcvDataSize = recvfrom(c->winSocket, repo.defBuffer, recvsize, 0,
+                                                    (struct sockaddr *)&repo.remSas, &addrlen);
+                        repo.remSasLen = addrlen;
+                }
+#else
                 repo.rcvDataSize = recvfrom(c->fd, repo.defBuffer, recvsize, 0, (struct sockaddr *) &repo.remSas, &repo.remSasLen);
+#endif
         } else {
                 repo.rcvDataSize = read(c->fd, repo.defBuffer, recvsize);
         }
@@ -2768,10 +2831,16 @@ int recv_proc(int connindex) {
         // Validate status
         //
         if (repo.rcvDataSize < 0) {
+#ifdef _WIN32
+                /* Winsock errors are thread-local and are not stored in errno. */
+                int recv_error = c->type == T_UDP ? WSAGetLastError() : errno;
+#else
+                int recv_error = errno;
+#endif
                 repo.rcvDataSize = 0;
-                if ((var = receive_trunc(errno, recvsize, RCV_HEADER_SIZE)) > 0) {
+                if ((var = receive_trunc(recv_error, recvsize, RCV_HEADER_SIZE)) > 0) {
                         repo.rcvDataSize = var;
-                } else if ((var = socket_error(connindex, errno, "RECVMMSG/RECV/RECVFROM")) > 0) {
+                } else if ((var = socket_error(connindex, recv_error, "RECVMMSG/RECV/RECVFROM")) > 0) {
                         if (!conf.errSuppress) {
                                 send_proc(errConn, scratch, var);
                         }
@@ -2829,23 +2898,45 @@ int send_proc(int connindex, char *sendbuffer, int sendsize) {
         // Issue send
         //
         if (c->subType == SOCK_STREAM || c->connected) {
+                #ifdef _WIN32
+                actual = send(c->winSocket, sendbuffer, sendsize, 0);
+#else
                 actual = send(c->fd, sendbuffer, sendsize, 0);
+#endif
 
         } else if (c->subType == SOCK_DGRAM) {
+                #ifdef _WIN32
+                actual = sendto(c->winSocket, sendbuffer, sendsize, 0,
+                                (struct sockaddr *)&repo.remSas, (int)repo.remSasLen);
+#else
                 actual = sendto(c->fd, sendbuffer, sendsize, 0, (struct sockaddr *) &repo.remSas, repo.remSasLen);
+#endif
         } else {
                 var = c->fd;
                 if ((c->type == T_CONSOLE) || (c->type == T_NULL)) {
+#ifdef _WIN32
+                        var = _fileno(stdout);
+#else
                         var = STDOUT_FILENO;
+#endif
                 }
+#ifdef _WIN32
+                actual = _write(var, sendbuffer, (unsigned int)sendsize);
+#else
                 actual = write(var, sendbuffer, sendsize);
+#endif
         }
 
         //
         // Validate status
         //
         if (actual < 0) {
-                if ((var = socket_error(connindex, errno, "SEND/SENDTO")) > 0) {
+#ifdef _WIN32
+                int send_error = c->type == T_UDP ? WSAGetLastError() : errno;
+#else
+                int send_error = errno;
+#endif
+                if ((var = socket_error(connindex, send_error, "SEND/SENDTO")) > 0) {
                         if (!conf.errSuppress) {
                                 send_proc(errConn, scratch, var);
                         }
@@ -2871,7 +2962,6 @@ int send_proc(int connindex, char *sendbuffer, int sendsize) {
         }
         return actual;
 }
-#ifdef __linux__
 //----------------------------------------------------------------------------
 //
 // Check for send or receive socket error (exclude operation would block indications)
@@ -2881,8 +2971,13 @@ int send_proc(int connindex, char *sendbuffer, int sendsize) {
 int socket_error(int connindex, int error, char *optext) {
         int var = 0;
 
+#ifdef _WIN32
+        if (error != WSAEWOULDBLOCK) {
+                var = sprintf(scratch, "[%d]%s WINSOCK ERROR: %d\n", connindex, optext, error);
+#else
         if (error != EWOULDBLOCK && error != EAGAIN) {
                 var = sprintf(scratch, "[%d]%s ERROR: %s\n", connindex, optext, strerror(error));
+#endif
         }
         return var;
 }
@@ -2893,12 +2988,15 @@ int socket_error(int connindex, int error, char *optext) {
 int receive_trunc(int error, int requested, int expected) {
         int var = 0;
 
+#ifdef _WIN32
+        if (error == WSAEMSGSIZE && requested == expected) {
+#else
         if (error == EMSGSIZE && requested == expected) {
+#endif
                 var = requested;
         }
         return var;
 }
-#endif
 //----------------------------------------------------------------------------
 //
 // Copy sending rate structure with proper network byte order
@@ -3135,7 +3233,11 @@ void upd_intf_stats(BOOL initialize) {
 // Return a uniformly distributed random number between min and max
 //
 int getuniform(int min, int max) {
+#ifdef _WIN32
+        int rvar = rand();
+#else
         int rvar = (int) random(); // Obtain random value (0 - RAND_MAX)
+#endif
 
         return (rvar % (max - min + 1)) + min;
 }

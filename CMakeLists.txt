@@ -27,6 +27,9 @@
 # ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 # POSSIBILITY OF SUCH DAMAGE.
 cmake_minimum_required(VERSION 3.5...3.10)
+if(POLICY CMP0091)
+    cmake_policy(SET CMP0091 NEW)
+endif()
 project(OB-UDPST)
 if(${CMAKE_VERSION} VERSION_GREATER "3.3.0")
         cmake_policy(SET CMP0057 NEW)
@@ -41,7 +44,14 @@ INCLUDE (FindPackageHandleStandardArgs)
 
 find_package(PkgConfig QUIET)
 
-find_package(OpenSSL 3.0) # Minimum of 3.0 required for <openssl/core_names.h>
+# Windows uses the statically linked vcpkg OpenSSL package to keep the GUI self-contained.
+# Require crypto explicitly: silently disabling authentication would produce unusable builds.
+if(WIN32)
+    set(OPENSSL_USE_STATIC_LIBS TRUE)
+    find_package(OpenSSL 3.0 REQUIRED COMPONENTS Crypto)
+else()
+    find_package(OpenSSL 3.0)
+endif()
 if(OPENSSL_FOUND)
         set(HAVE_OPENSSL TRUE)
         link_directories(${OPENSSL_LIBRARY_DIRS})
@@ -73,6 +83,17 @@ CHECK_FUNCTION_EXISTS (getifaddrs HAVE_GETIFADDRS)
 CHECK_FUNCTION_EXISTS (fork HAVE_WORKING_FORK)
 
 OPTION(DISABLE_INT_TIMER "Disable interval timer on systems without required timer resolution (increases CPU util.)" OFF)
+# The existing UDPST polling path drives timer expiry without POSIX SIGALRM.
+# Use it for the Windows diagnostic build until a native timer/event loop is ready.
+# This is intentionally not a claim of production-ready timing precision.
+if(WIN32 AND MSVC)
+    # Use the static MSVC runtime for standalone distribution.
+    # This does not eliminate other third-party DLL dependencies.
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+endif()
+if(WIN32)
+    set(DISABLE_INT_TIMER ON CACHE BOOL "Windows uses polling pending native timer support" FORCE)
+endif()
 OPTION(HAVE_SENDMMSG "Enable/Disable use of SendMMsg()" ON)
 OPTION(HAVE_RECVMMSG "Enable/Disable use of RecvMMsg()" ON)
 OPTION(HAVE_GSO "Enable/Disable use of Generic Segmentation Offload (GSO)" ON)
@@ -89,12 +110,48 @@ add_definitions(-DRUNDIR=\"${CMAKE_INSTALL_PREFIX}/run\")
 
 CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/config.h.cmake ${CMAKE_CURRENT_BINARY_DIR}/config.h)
 
-# Define a library called udpst_core containing all core functionality
-add_library(udpst_core udpst_control.c udpst_data.c udpst_srates.c cJSON.c)
-set(libraries udpst_core ${libraries})
-
-add_executable(udpst udpst.c)
-target_link_libraries(udpst ${libraries} m)
+# Keep the real Linux implementation intact. The Windows client still needs
+# its socket and event-loop port; do not ship a false-positive udpst.exe.
+if(WIN32)
+    add_library(udpst_win32_srates STATIC udpst_srates.c)
+    target_compile_definitions(udpst_win32_srates PRIVATE
+        _WIN32_WINNT=0x0602 WIN32_LEAN_AND_MEAN)
+    target_link_libraries(udpst_win32_srates PRIVATE ws2_32)
+    # Compile the original control/data sources on demand to expose the next
+    # MSVC portability errors without blocking the passing module build.
+    add_library(udpst_win32_port_diagnostics OBJECT EXCLUDE_FROM_ALL
+        udpst_control.c udpst_data.c)
+    target_compile_definitions(udpst_win32_port_diagnostics PRIVATE
+        _WIN32_WINNT=0x0602 WIN32_LEAN_AND_MEAN)
+    # Opt-in compile probe for the actual main program; not an executable.
+    add_library(udpst_win32_main_diagnostics OBJECT EXCLUDE_FROM_ALL udpst.c)
+    target_compile_definitions(udpst_win32_main_diagnostics PRIVATE
+        _WIN32_WINNT=0x0602 WIN32_LEAN_AND_MEAN DISABLE_INT_TIMER)
+    # Link the complete native client as an opt-in target. Keep it out of
+    # ALL until the Windows link and runtime checks have been validated.
+    add_executable(udpst_win32_link_probe EXCLUDE_FROM_ALL
+        udpst.c udpst_control.c udpst_data.c udpst_srates.c cJSON.c)
+    target_compile_definitions(udpst_win32_link_probe PRIVATE
+        _WIN32_WINNT=0x0602 WIN32_LEAN_AND_MEAN DISABLE_INT_TIMER)
+    target_link_libraries(udpst_win32_link_probe PRIVATE ws2_32)
+    if(OPENSSL_FOUND)
+        target_link_libraries(udpst_win32_link_probe PRIVATE OpenSSL::Crypto)
+    endif()
+    set_target_properties(udpst_win32_link_probe PROPERTIES OUTPUT_NAME udpst)
+    add_executable(udpst_auth_kdf_selftest EXCLUDE_FROM_ALL tests/auth_kdf_selftest.c)
+    target_link_libraries(udpst_auth_kdf_selftest PRIVATE OpenSSL::Crypto)
+    # udpst.c uses DISABLE_INT_TIMER directly in preprocessor guards.
+    # config.h is generated but not included by that translation unit;
+    # defining the macro on this target actually excludes POSIX SIGALRM
+    # and setitimer code in MSVC diagnostics.
+    message(STATUS "Windows sending-rate module build enabled; full UDPST client not yet ported")
+else()
+    # Define a library called udpst_core containing all core functionality.
+    add_library(udpst_core udpst_control.c udpst_data.c udpst_srates.c cJSON.c)
+    set(libraries udpst_core ${libraries})
+    add_executable(udpst udpst.c)
+    target_link_libraries(udpst ${libraries} m)
+endif()
 
 # For some reason Ninja sometimes faces a stupid error which is fixed by
 # the following

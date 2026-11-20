@@ -42,6 +42,12 @@
 #ifdef __linux__
 #include "config.h"
 #endif /* __linux__ */
+#ifdef _WIN32
+/* Windows uses adapter indices/names rather than POSIX IFNAMSIZ. */
+#ifndef IFNAMSIZ
+#define IFNAMSIZ 256
+#endif
+#endif
 #include "udpst_common.h"
 
 //----------------------------------------------------------------------------
@@ -149,6 +155,7 @@
 #define MIN_SUBINT_PERIOD    100        //
 #define MAX_SUBINT_PERIOD    10000      //
 #define DEF_CONTROL_PORT     24601      // Control port (previously 25000)
+#define LEGACY_CONTROL_PORT  24602      // Qonnected legacy test endpoint; selectable with -p
 #define MIN_CONTROL_PORT     1          //
 #define MAX_CONTROL_PORT     UINT16_MAX //
 #define DEF_BIMODAL_COUNT    0          // Bimodal initial sub-interval count
@@ -232,8 +239,15 @@
 //
 // File descriptor flags and file modes
 //
+#ifdef _WIN32
+/* Log files use CRT descriptors, not Winsock SOCKET handles.
+ * O_BINARY avoids unwanted newline translation in binary writes. */
+#define LOGFILE_FLAGS (_O_WRONLY | _O_CREAT | _O_APPEND | _O_BINARY)
+#define LOGFILE_MODE  (_S_IREAD | _S_IWRITE)
+#else
 #define LOGFILE_FLAGS (O_WRONLY | O_CREAT | O_APPEND | O_NONBLOCK)
 #define LOGFILE_MODE  (S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH)
+#endif
 
 //----------------------------------------------------------------------------
 //
@@ -477,7 +491,15 @@ struct repository {
 // Data structure representing a connection to a device, file, socket, etc.
 //
 struct connection {
-        int fd; // File descriptor
+        int fd; // POSIX descriptor / CRT console-file descriptor
+#ifdef _WIN32
+        /*
+         * Native UDP SOCKET is pointer-sized on Win64. Keep it separate
+         * from fd until the socket lifecycle and WSAPoll registration are
+         * converted together; never cast SOCKET into fd.
+         */
+        SOCKET winSocket;
+#endif
 #define T_UNKNOWN  0
 #define T_UDP      1
 #define T_CONSOLE  2

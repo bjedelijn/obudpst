@@ -105,7 +105,29 @@
 #include <openssl/params.h>     // Added for OSSL_PARAM
 #endif
 #else
+#ifdef _WIN32
+#include "platform/win32/udpst_win32_platform.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdint.h>
+#include <errno.h>
+#include <limits.h>
+#include <time.h>
+#include <math.h>
+#include <fcntl.h>
+#include <io.h>
+#ifdef AUTH_KEY_ENABLE
+#include <openssl/hmac.h>
+#include <openssl/x509.h>
+#include <openssl/evp.h>
+#include <openssl/kdf.h>
+#include <openssl/core_names.h>
+#include <openssl/params.h>
+#endif
+#else
 #include "../udpst_control_alt1.h"
+#endif
 #endif
 //
 #include "cJSON.h"
@@ -115,7 +137,9 @@
 #include "udpst_control.h"
 #include "udpst_data.h"
 #ifndef __linux__
+#ifndef _WIN32
 #include "../udpst_control_alt2.h"
+#endif
 #endif
 
 //----------------------------------------------------------------------------
@@ -131,7 +155,7 @@ int open_outputfile(int);
 void insert_auth(int, unsigned char *, unsigned char *, unsigned char *, size_t);
 int validate_auth(int, unsigned char *, unsigned char *, unsigned char *, unsigned char *, size_t);
 BOOL verify_ctrlpdu(int, struct controlHdrSR *, struct controlHdrTA *, char *, char *);
-#ifdef __linux__
+#ifdef AUTH_KEY_ENABLE
 int kdf_hmac_sha256(char *, uint32_t, unsigned char *, unsigned char *);
 #endif
 
@@ -179,12 +203,27 @@ void init_conn(int connindex, BOOL cleanup) {
         if (cleanup) {
                 if (connindex == repo.maxConnIndex) {
                         for (i = connindex - 1; i >= 0; i--) {
+#ifdef _WIN32
+                                /* UDP sockets are tracked in winSocket, not fd. */
+                                if (conn[i].state == S_FREE)
+                                        continue;
+#else
                                 if (conn[i].fd == -1)
                                         continue;
+#endif
                                 repo.maxConnIndex = i;
                                 break;
                         }
                 }
+#ifdef _WIN32
+                /* Never pass a Winsock SOCKET to the CRT close() function. */
+                if (c->type == T_UDP) {
+                        if (c->winSocket != INVALID_SOCKET)
+                                closesocket(c->winSocket);
+                } else if (c->fd >= 0 && c->type != T_CONSOLE) {
+                        _close(c->fd);
+                }
+#else
                 if (c->fd >= 0) {
 #ifdef __linux__
                         // Event needed to be non-null before kernel version 2.6.9
@@ -192,6 +231,7 @@ void init_conn(int connindex, BOOL cleanup) {
 #endif
                         close(c->fd);
                 }
+#endif
                 if (c->outputFPtr != NULL)
                         fclose(c->outputFPtr);
         }
@@ -205,6 +245,9 @@ void init_conn(int connindex, BOOL cleanup) {
         // Initialize non-zero values
         //
         c->fd           = -1;
+#ifdef _WIN32
+        c->winSocket    = INVALID_SOCKET;
+#endif
         c->priAction    = &null_action;
         c->secAction    = &null_action;
         c->timer1Action = &null_action;
@@ -246,6 +289,15 @@ int send_setupreq(int connindex, int mcIndex, int serverIndex) {
                 // Open local sysfs interface statistics
                 //
                 if (*conf.intfName) {
+#ifdef _WIN32
+                        /* Linux sysfs interface counters and SO_BINDTODEVICE are
+                         * unavailable on Windows. Fail explicitly instead of
+                         * silently testing over the wrong network adapter. */
+                        var = sprintf(scratch,
+                                      "ERROR: Explicit interface selection is not yet supported on Windows\n");
+                        send_proc(errConn, scratch, var);
+                        return -1;
+#else
                         for (i = 0; i < 2; i++) {
                                 var = sprintf(intfpath, "/sys/class/net/%s/statistics/", conf.intfName);
                                 if ((conf.usTesting && i == 0) || (conf.dsTesting && i == 1))
@@ -272,6 +324,7 @@ int send_setupreq(int connindex, int mcIndex, int serverIndex) {
                                         repo.intfFDAlt = fd;
                                 }
                         }
+#endif
                 }
                 //
                 // Init aggregate connection and aggregate query timer
@@ -665,7 +718,10 @@ int service_setupresp(int connindex) {
                 i   = validate_auth(c->protocolVer, c->clientKey, c->serverKey, (unsigned char *) &cHdrSR->authMode,
                                     (unsigned char *) cHdrSR, CHSR_SIZE_CVER);
                 if (i > 0) {
-                        var                = sprintf(scratch, "ERROR: Authentication failure of setup response from server");
+                        var                = sprintf(scratch, "ERROR: Authentication failure of setup response from server (authMode=%u, responseKeyId=%u, requestedKeyId=%d, derivedKeysReady=%s, responseCode=%u)",
+                                             (unsigned int)cHdrSR->authMode, (unsigned int)cHdrSR->keyId, conf.keyId,
+                                             memcmp(c->clientKey, c->serverKey, SHA256_KEY_LEN) != 0 ? "yes" : "no",
+                                             (unsigned int)cHdrSR->cmdResponse);
                         repo.endTimeStatus = CHSR_CRSP_ERRBASE + CHSR_CRSP_AUTHFAIL; // ErrorStatus
                 } else if (i < 0) {
                         var                = sprintf(scratch, "ERROR: Authentication time invalid in setup response from server");
@@ -1656,6 +1712,9 @@ int service_actresp(int connindex) {
 int sock_mgmt(int connindex, char *host, int port, char *ip, int action) {
         register struct connection *c = &conn[connindex];
         int i, var, fd;
+#ifdef _WIN32
+        SOCKET native_socket = INVALID_SOCKET;
+#endif
         BOOL hostisaddr = FALSE;
         char addrstr[INET6_ADDR_STRLEN], portstr[8];
         struct addrinfo hints, *res = NULL, *ai;
@@ -1750,6 +1809,31 @@ int sock_mgmt(int connindex, char *host, int port, char *ip, int action) {
                         //
                         // Obtain socket, restrict to INET6 if needed, and bind
                         //
+#ifdef _WIN32
+                        native_socket = socket(ai->ai_family, ai->ai_socktype, ai->ai_protocol);
+                        if (native_socket == INVALID_SOCKET) {
+                                var = sprintf(scratch, "SOCKET ERROR: WSA %d (%s:%d)\n", WSAGetLastError(), host, port);
+                                continue;
+                        }
+                        if (ai->ai_family == AF_INET6) {
+                                i = conf.ipv6Only ? 1 : 0;
+                                if (setsockopt(native_socket, IPPROTO_IPV6, IPV6_V6ONLY,
+                                               (const char *)&i, sizeof(i)) == SOCKET_ERROR) {
+                                        var = sprintf(scratch, "IPV6_V6ONLY ERROR: WSA %d\n", WSAGetLastError());
+                                        closesocket(native_socket);
+                                        native_socket = INVALID_SOCKET;
+                                        continue;
+                                }
+                        }
+                        if (bind(native_socket, ai->ai_addr, (int)ai->ai_addrlen) == SOCKET_ERROR) {
+                                var = sprintf(scratch, "BIND ERROR: WSA %d (%s:%d)\n", WSAGetLastError(), host, port);
+                                closesocket(native_socket);
+                                native_socket = INVALID_SOCKET;
+                                continue;
+                        }
+                        /* Preserve the entire pointer-sized handle, never store it in fd. */
+                        c->winSocket = native_socket;
+#else
                         if ((fd = socket(ai->ai_family, ai->ai_socktype, ai->ai_protocol)) == -1) {
                                 var = sprintf(scratch, "SOCKET ERROR: %s (%s:%d)\n", strerror(errno), host, port);
                                 continue;
@@ -1774,6 +1858,7 @@ int sock_mgmt(int connindex, char *host, int port, char *ip, int action) {
                                 continue;
                         }
                         c->fd      = fd;
+#endif
                         c->subType = SOCK_DGRAM;
                         c->state   = S_BOUND;
                         var        = 0;
@@ -1810,7 +1895,12 @@ int new_conn(int activefd, char *host, int port, int type, int (*priaction)(int)
         //
         fd = activefd;
         for (i = 0; i < conf.maxConnections; i++) {
+#ifdef _WIN32
+                /* S_FREE works for both Winsock handles and CRT descriptors. */
+                if (conn[i].state == S_FREE) {
+#else
                 if (conn[i].fd == -1) {
+#endif
                         conn[i].fd        = fd;        // Save initial descriptor
                         conn[i].type      = type;      // Set connection type
                         conn[i].state     = S_CREATED; // Set connection state
@@ -1843,9 +1933,15 @@ int new_conn(int activefd, char *host, int port, int type, int (*priaction)(int)
         // Set FD as non-blocking
         // Console FD (i.e., stdin) gets setup in main()
         //
-        if (type != T_CONSOLE) {
+        if (type != T_CONSOLE && type != T_LOG && type != T_NULL) {
+#ifdef _WIN32
+                /* Only UDP connections have Winsock handles. Never cast CRT fd. */
+                if (conn[i].winSocket == INVALID_SOCKET ||
+                    udpst_win32_set_nonblocking(conn[i].winSocket) != 0) {
+#else
                 var = fcntl(fd, F_GETFL, 0);
                 if (fcntl(fd, F_SETFL, var | O_NONBLOCK) != 0) {
+#endif
                         var = sprintf(scratch, "[%d]F_SETFL ERROR: %s\n", i, strerror(errno));
                         send_proc(errConn, scratch, var);
                         init_conn(i, TRUE);
@@ -1876,9 +1972,15 @@ int new_conn(int activefd, char *host, int port, int type, int (*priaction)(int)
         //
         // Set address reuse
         //
+#ifdef _WIN32
+        /* Socket options below must use the pointer-sized Winsock handle. */
+#define UDPST_CONN_SOCKET conn[i].winSocket
+#else
+#define UDPST_CONN_SOCKET fd
+#endif
         if (type == T_UDP) {
                 var = 1;
-                if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (const void *) &var, sizeof(var)) < 0) {
+                if (setsockopt(UDPST_CONN_SOCKET, SOL_SOCKET, SO_REUSEADDR, (const void *) &var, sizeof(var)) < 0) {
                         var = sprintf(scratch, "[%d]SET SO_REUSEADDR ERROR: %s\n", i, strerror(errno));
                         send_proc(errConn, scratch, var);
                         init_conn(i, TRUE);
@@ -1895,13 +1997,13 @@ int new_conn(int activefd, char *host, int port, int type, int (*priaction)(int)
                 // Set socket buffers
                 //
                 if (conf.sockSndBuf != 0 && conf.sockRcvBuf != 0) {
-                        if (setsockopt(fd, SOL_SOCKET, SO_SNDBUF, (const void *) &conf.sockSndBuf, sizeof(conf.sockSndBuf)) < 0) {
+                        if (setsockopt(UDPST_CONN_SOCKET, SOL_SOCKET, SO_SNDBUF, (const void *) &conf.sockSndBuf, sizeof(conf.sockSndBuf)) < 0) {
                                 var = sprintf(scratch, "[%d]SET SO_SNDBUF ERROR: %s\n", i, strerror(errno));
                                 send_proc(errConn, scratch, var);
                                 init_conn(i, TRUE);
                                 return -1;
                         }
-                        if (setsockopt(fd, SOL_SOCKET, SO_RCVBUF, (const void *) &conf.sockRcvBuf, sizeof(conf.sockRcvBuf)) < 0) {
+                        if (setsockopt(UDPST_CONN_SOCKET, SOL_SOCKET, SO_RCVBUF, (const void *) &conf.sockRcvBuf, sizeof(conf.sockRcvBuf)) < 0) {
                                 var = sprintf(scratch, "[%d]SET SO_RCVBUF ERROR: %s\n", i, strerror(errno));
                                 send_proc(errConn, scratch, var);
                                 init_conn(i, TRUE);
@@ -1913,14 +2015,14 @@ int new_conn(int activefd, char *host, int port, int type, int (*priaction)(int)
                 //
                 if (conf.verbose) {
                         var = sizeof(sndbuf);
-                        if (getsockopt(fd, SOL_SOCKET, SO_SNDBUF, (void *) &sndbuf, (socklen_t *) &var) < 0) {
+                        if (getsockopt(UDPST_CONN_SOCKET, SOL_SOCKET, SO_SNDBUF, (void *) &sndbuf, (socklen_t *) &var) < 0) {
                                 var = sprintf(scratch, "[%d]GET SO_SNDBUF ERROR: %s\n", i, strerror(errno));
                                 send_proc(errConn, scratch, var);
                                 init_conn(i, TRUE);
                                 return -1;
                         }
                         var = sizeof(rcvbuf);
-                        if (getsockopt(fd, SOL_SOCKET, SO_RCVBUF, (void *) &rcvbuf, (socklen_t *) &var) < 0) {
+                        if (getsockopt(UDPST_CONN_SOCKET, SOL_SOCKET, SO_RCVBUF, (void *) &rcvbuf, (socklen_t *) &var) < 0) {
                                 var = sprintf(scratch, "[%d]GET SO_RCVBUF ERROR: %s\n", i, strerror(errno));
                                 send_proc(errConn, scratch, var);
                                 init_conn(i, TRUE);
@@ -1933,7 +2035,7 @@ int new_conn(int activefd, char *host, int port, int type, int (*priaction)(int)
         // Obtain local IP address and port number
         //
         var = sizeof(sas);
-        if (getsockname(fd, (struct sockaddr *) &sas, (socklen_t *) &var) < 0) {
+        if (getsockname(UDPST_CONN_SOCKET, (struct sockaddr *) &sas, (socklen_t *) &var) < 0) {
                 var = sprintf(scratch, "[%d]GETSOCKNAME ERROR: %s\n", i, strerror(errno));
                 send_proc(errConn, scratch, var);
                 init_conn(i, TRUE);
@@ -1966,7 +2068,11 @@ int sock_connect(int connindex) {
         //
         // Issue connect
         //
+#ifdef _WIN32
+        if (connect(c->winSocket, (struct sockaddr *) &repo.remSas, (int)repo.remSasLen) == SOCKET_ERROR) {
+#else
         if (connect(c->fd, (struct sockaddr *) &repo.remSas, repo.remSasLen) == -1) {
+#endif
                 //
                 // Connect error (immediate completion expected with SOCK_DGRAM)
                 //
@@ -2003,7 +2109,11 @@ int connected(int connindex) {
         // Update local IP address and port number
         //
         var = sizeof(sas);
+#ifdef _WIN32
+        if (getsockname(c->winSocket, (struct sockaddr *) &sas, (int *)&var) == SOCKET_ERROR) {
+#else
         if (getsockname(c->fd, (struct sockaddr *) &sas, (socklen_t *) &var) < 0) {
+#endif
                 var = sprintf(scratch, "[%d]GETSOCKNAME ERROR: %s\n", connindex, strerror(errno));
                 send_proc(errConn, scratch, var);
                 return -1;
@@ -2016,7 +2126,11 @@ int connected(int connindex) {
         // Obtain remote IP address and port number
         //
         var = sizeof(sas);
+#ifdef _WIN32
+        if (getpeername(c->winSocket, (struct sockaddr *) &sas, (int *)&var) == SOCKET_ERROR) {
+#else
         if (getpeername(c->fd, (struct sockaddr *) &sas, (socklen_t *) &var) < 0) {
+#endif
                 var = sprintf(scratch, "[%d]GETPEERNAME ERROR: %s\n", connindex, strerror(errno));
                 send_proc(errConn, scratch, var);
                 return -1;
@@ -2134,7 +2248,7 @@ int open_outputfile(int connindex) {
         // Open output file
         //
         if ((c->outputFPtr = fopen(fname, "w")) == NULL) {
-                return sprintf(scratch, "FOPEN ERROR: <%.*s> %s\n", NAME_MAX, fname, strerror(errno));
+                return sprintf(scratch, "FOPEN ERROR: <%.*s> %s\n", (int) (sizeof(fname) - 1), fname, strerror(errno));
         }
 
         //
@@ -2442,7 +2556,6 @@ BOOL verify_ctrlpdu(int connindex, struct controlHdrSR *cHdrSR, struct controlHd
         return TRUE;
 }
 //----------------------------------------------------------------------------
-#ifdef __linux__
 #ifdef AUTH_KEY_ENABLE
 //
 // Output individual authentication keys of length SHA256_KEY_LEN
@@ -2454,9 +2567,10 @@ int kdf_hmac_sha256(char *Kin, uint32_t authUnixTime,
                     unsigned char *cAuthKey,   // Client key
                     unsigned char *sAuthKey) { // Server key
 
-        int var, keylen = SHA256_KEY_LEN * 2;
+        int var;
+        const int keylen = SHA256_KEY_LEN * 2;
         char context[16];
-        unsigned char *keyptr, keybuf[keylen];
+        unsigned char *keyptr, keybuf[SHA256_KEY_LEN * 2];
         EVP_KDF *kdf      = NULL;
         EVP_KDF_CTX *kctx = NULL;
         OSSL_PARAM params[16], *p = params;
@@ -2521,5 +2635,4 @@ int kdf_hmac_sha256(char *Kin, uint32_t authUnixTime,
         return 1;
 }
 #endif // AUTH_KEY_ENABLE
-#endif
 //----------------------------------------------------------------------------
