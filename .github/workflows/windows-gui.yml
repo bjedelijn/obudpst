@@ -18,7 +18,11 @@ jobs:
           choco install imagemagick -y --no-progress
           $source = "windows/Qonnected.Speedtest/branding/Qonnected-beeldmerk.svg"
           $target = "windows/Qonnected.Speedtest/branding/Qonnected-NOC.ico"
-          & (Get-Command magick.exe -ErrorAction Stop).Source -background none -density 256 $source -resize 256x256 $target
+          # Preserve the original Q artwork and place it on a high-contrast rounded tile.
+          $magick = (Get-Command magick.exe -ErrorAction Stop).Source
+          & $magick -size 256x256 xc:none -fill '#281D52' -draw "roundrectangle 0,0 255,255 54,54" "$env:RUNNER_TEMP/q-tile.png"
+          & $magick -background none -density 400 $source -resize 198x198 "$env:RUNNER_TEMP/q-mark.png"
+          & $magick "$env:RUNNER_TEMP/q-tile.png" "$env:RUNNER_TEMP/q-mark.png" -gravity center -compose over -composite -define icon:auto-resize=256,128,64,48,32,16 $target
           if ($LASTEXITCODE -ne 0) { throw "Icon generation failed" }
       - name: Install static OpenSSL for native Windows authentication
         shell: pwsh
