@@ -21,7 +21,9 @@ internal static class Program
         {
             try
             {
-                var executable = EmbeddedEngine.Resolve();
+                if (!byte.TryParse(authenticationKeyId.Text, out var keyId) && !customer && !string.IsNullOrEmpty(authenticationKey.Password))
+                throw new InvalidOperationException("Sleutel-ID moet tussen 0 en 255 liggen.");
+            var executable = EmbeddedEngine.Resolve();
                 using var stream = File.OpenRead(executable);
                 if (stream.Length < 1024 || stream.ReadByte() != 'M' || stream.ReadByte() != 'Z')
                     throw new InvalidDataException("Embedded engine is not a valid PE executable.");
@@ -52,6 +54,7 @@ internal sealed class SpeedtestWindow : Window
     private readonly ComboBox direction = new() { MinWidth = 160 };
     private readonly ComboBox ipVersion = new() { MinWidth = 160 };
     private readonly PasswordBox authenticationKey = new();
+    private readonly TextBox authenticationKeyId = new() { Text = "1", Width = 85 };
     private readonly TextBox result = new() { IsReadOnly = true, AcceptsReturn = true,
         VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
         HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
@@ -129,6 +132,7 @@ internal sealed class SpeedtestWindow : Window
             layout.Children.Add(Labeled("Protocol", protocol));
             layout.Children.Add(Labeled("UDP-controlpoort", port));
             layout.Children.Add(Labeled("Authenticatiesleutel (optioneel, niet opgeslagen)", authenticationKey));
+            layout.Children.Add(Labeled("Authenticatie sleutel-ID (0-255)", authenticationKeyId));
             layout.Children.Add(Labeled("Richting", direction));
             layout.Children.Add(Labeled("IP-versie", ipVersion));
         }
@@ -239,7 +243,7 @@ internal sealed class SpeedtestWindow : Window
             {
                 status.Text = option == "-d" ? "Downloadmeting..." : "Uploadmeting...";
                 var raw = await EngineRunner.RunAsync(executable, testHost, testPort, option, selectedProtocol,
-                    authenticationKey.Password, customer ? 0 : ipVersion.SelectedIndex);
+                    authenticationKey.Password, customer ? 0 : ipVersion.SelectedIndex, customer ? 0 : keyId);
                 using var parsed = JsonDocument.Parse(raw);
                 reports.Add(parsed.RootElement.Clone());
             }
@@ -350,7 +354,7 @@ internal static class EmbeddedEngine
 
 internal static class EngineRunner
 {
-    internal static async Task<string> RunAsync(string exe, string host, int port, string direction, string protocol, string? authenticationKey, int ipVersion)
+    internal static async Task<string> RunAsync(string exe, string host, int port, string direction, string protocol, string? authenticationKey, int ipVersion, int keyId)
     {
         if (!File.Exists(exe)) throw new IOException(
             "TR-471 Windows-meetengine ontbreekt: " + Path.GetFileName(exe));
@@ -372,6 +376,8 @@ internal static class EngineRunner
             // Native -a is available only when AUTH_KEY_ENABLE is compiled in.
             process.StartInfo.ArgumentList.Add("-a");
             process.StartInfo.ArgumentList.Add(authenticationKey);
+            process.StartInfo.ArgumentList.Add("-y");
+            process.StartInfo.ArgumentList.Add(keyId.ToString());
         }
         if (ipVersion == 1) process.StartInfo.ArgumentList.Add("-4");
         else if (ipVersion == 2) process.StartInfo.ArgumentList.Add("-6");
