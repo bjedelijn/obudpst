@@ -138,6 +138,8 @@ if(WIN32)
         target_link_libraries(udpst_win32_link_probe PRIVATE OpenSSL::Crypto)
     endif()
     set_target_properties(udpst_win32_link_probe PROPERTIES OUTPUT_NAME udpst)
+    add_executable(udpst_auth_kdf_selftest EXCLUDE_FROM_ALL tests/auth_kdf_selftest.c)
+    target_link_libraries(udpst_auth_kdf_selftest PRIVATE OpenSSL::Crypto)
     # udpst.c uses DISABLE_INT_TIMER directly in preprocessor guards.
     # config.h is generated but not included by that translation unit;
     # defining the macro on this target actually excludes POSIX SIGALRM
