@@ -53,6 +53,13 @@ jobs:
           if (-not (Test-Path $engine)) { throw "Native udpst.exe missing" }
           New-Item -ItemType Directory -Force "windows/Qonnected.Speedtest/native" | Out-Null
           Copy-Item $engine "windows/Qonnected.Speedtest/native/udpst.exe" -Force
+      - name: Cross-check UDPST KBKDF and HMAC offline
+        shell: pwsh
+        run: |
+          cmake --build build-native --config Release --target udpst_auth_kdf_selftest
+          if ($LASTEXITCODE -ne 0) { throw "Authentication self-test build failed" }
+          & "build-native/Release/udpst_auth_kdf_selftest.exe"
+          if ($LASTEXITCODE -ne 0) { throw "Authentication self-test failed" }
       - name: Verify native authentication is compiled in
         shell: pwsh
         run: |
