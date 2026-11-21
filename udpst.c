@@ -680,10 +680,48 @@ int main(int argc, char **argv) {
                 //
                 var = -1;
 #ifdef _WIN32
-                /* Windows has no POSIX interval timer here. Poll at a bounded
-                 * cadence so timers advance without a busy-spin or an
-                 * indefinitely blocked WSAPoll call. */
-                var = 10;
+                /*
+                 * The POSIX client uses a periodic interval timer to service
+                 * microsecond-scale send deadlines. A fixed 10 ms WSAPoll
+                 * timeout throttles Windows transmitters at high rates.
+                 *
+                 * Bound the wait by the earliest scheduled connection timer.
+                 * WSAPoll only accepts whole milliseconds: when the deadline
+                 * is less than 1 ms away, poll without blocking and yield
+                 * below instead of sleeping past the send deadline.
+                 */
+                {
+                        int deadline_us = 10000;
+                        int timer_index;
+                        struct timespec now;
+                        UDPST_UPDATE_SYSTEM_CLOCK();
+                        now = repo.systemClock;
+                        for (timer_index = 0; timer_index <= repo.maxConnIndex; ++timer_index) {
+                                struct connection *tc = &conn[timer_index];
+                                const struct timespec *deadlines[4] = {
+                                        &tc->endTime, &tc->timer1Thresh,
+                                        &tc->timer2Thresh, &tc->timer3Thresh
+                                };
+                                int timer_slot;
+                                for (timer_slot = 0; timer_slot < 4; ++timer_slot) {
+                                        const struct timespec *deadline = deadlines[timer_slot];
+                                        long long remaining_ns;
+                                        if (!tspecisset(deadline))
+                                                continue;
+                                        remaining_ns = ((long long)deadline->tv_sec - now.tv_sec) * 1000000000LL +
+                                                       ((long long)deadline->tv_nsec - now.tv_nsec);
+                                        if (remaining_ns <= 0) {
+                                                deadline_us = 0;
+                                                break;
+                                        }
+                                        if (remaining_ns / 1000LL < deadline_us)
+                                                deadline_us = (int)(remaining_ns / 1000LL);
+                                }
+                                if (deadline_us == 0)
+                                        break;
+                        }
+                        var = deadline_us / 1000;
+                }
 #else
                 if (sig_alrm > 0)
                         var = 0; // Return immediately if alarm was already received
@@ -715,6 +753,12 @@ int main(int argc, char **argv) {
                 readyfds = epoll_wait(repo.epollFD, epoll_events, MAX_EPOLL_EVENTS, var);
 #endif
 
+#ifdef _WIN32
+                /* Yield on sub-millisecond deadlines without forcing a 1 ms
+                 * socket wait. Re-evaluate the actual UTC deadline each pass. */
+                if (readyfds == 0 && var == 0)
+                        Sleep(0);
+#endif
                 //
                 // Process FD(s)
                 //
