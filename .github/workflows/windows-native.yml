@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - feature/windows-native
+      - fix/windows-native-timer-parity
     paths:
       - '.github/workflows/windows-native.yml'
       - 'CMakeLists.txt'
