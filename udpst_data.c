@@ -763,7 +763,16 @@ int send_loadpdu(int connindex, int transmitter) {
         if (txintpri > 0) {
                 tspecvar.tv_sec  = 0;
                 tspecvar.tv_nsec = (long) ((txintpri - SEND_TIMER_ADJ) * NSECINUSEC);
+#ifdef _WIN32
+                /* Preserve the intended send cadence across late Windows timer
+                 * dispatches. Rebase only when the deadline is not initialized. */
+                if (tspecisset(tspecpri))
+                        tspecplus(tspecpri, &tspecvar, tspecpri);
+                else
+                        tspecplus(&repo.systemClock, &tspecvar, tspecpri);
+#else
                 tspecplus(&repo.systemClock, &tspecvar, tspecpri);
+#endif
         } else {
                 tspecclear(tspecpri);
         }
