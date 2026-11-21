@@ -140,6 +140,16 @@ jobs:
             throw "udpst.exe -h did not print expected usage text"
           }
           Write-Host "Windows executable startup smoke test passed"
+      - name: Verify timer diagnostics in packaged executable
+        shell: pwsh
+        run: |
+          $exe = Join-Path $PWD "windows-package/udpst.exe"
+          $bytes = [System.IO.File]::ReadAllBytes($exe)
+          $binaryText = [System.Text.Encoding]::GetEncoding(28591).GetString($bytes)
+          if (-not $binaryText.Contains("UDPST-TIMER-SLOTS")) {
+            throw "Packaged udpst.exe does not contain UDPST-TIMER-SLOTS diagnostics"
+          }
+          Write-Host "Timer diagnostics verified in packaged udpst.exe"
       - name: Upload native Windows executable
         uses: actions/upload-artifact@v4
         with:
