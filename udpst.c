@@ -198,6 +198,8 @@ static uint64_t win_diag_last_ns = 0, win_diag_poll_ns = 0;
 static uint64_t win_diag_polls = 0, win_diag_zero_polls = 0;
 static uint64_t win_diag_timer_calls = 0, win_diag_timer_late_ns = 0;
 static uint64_t win_diag_timer_max_late_ns = 0;
+static uint64_t win_diag_timer_slot_count[3] = {0, 0, 0};
+static uint64_t win_diag_timer_slot_max_ns[3] = {0, 0, 0};
 #else
 struct epoll_event epoll_events[MAX_EPOLL_EVENTS];
 #endif
@@ -891,6 +893,12 @@ int main(int argc, char **argv) {
                                                 (unsigned long long)win_diag_timer_calls,
                                                 win_diag_timer_calls ? (double)win_diag_timer_late_ns / (double)win_diag_timer_calls / 1000.0 : 0.0,
                                                 (double)win_diag_timer_max_late_ns / 1000.0);
+                                        fprintf(stderr, "[UDPST-TIMER-SLOTS] t1=%llu max1_us=%.1f t2=%llu max2_us=%.1f t3=%llu max3_us=%.1f\\n",
+                                                (unsigned long long)win_diag_timer_slot_count[0], (double)win_diag_timer_slot_max_ns[0] / 1000.0,
+                                                (unsigned long long)win_diag_timer_slot_count[1], (double)win_diag_timer_slot_max_ns[1] / 1000.0,
+                                                (unsigned long long)win_diag_timer_slot_count[2], (double)win_diag_timer_slot_max_ns[2] / 1000.0);
+                                        memset(win_diag_timer_slot_count, 0, sizeof(win_diag_timer_slot_count));
+                                        memset(win_diag_timer_slot_max_ns, 0, sizeof(win_diag_timer_slot_max_ns));
                                         win_diag_last_ns = diag_now_ns;
                                         win_diag_poll_ns = win_diag_polls = win_diag_zero_polls = 0;
                                         win_diag_timer_calls = win_diag_timer_late_ns = win_diag_timer_max_late_ns = 0;
@@ -964,6 +972,9 @@ int main(int argc, char **argv) {
                                                         uint64_t late_ns = (uint64_t)(repo.systemClock.tv_sec - due->tv_sec) * 1000000000ULL +
                                                                            (uint64_t)(repo.systemClock.tv_nsec - due->tv_nsec);
                                                         win_diag_timer_calls++;
+                                                        win_diag_timer_slot_count[0]++;
+                                                        if (late_ns > win_diag_timer_slot_max_ns[0])
+                                                                win_diag_timer_slot_max_ns[0] = late_ns;
                                                         win_diag_timer_late_ns += late_ns;
                                                         if (late_ns > win_diag_timer_max_late_ns)
                                                                 win_diag_timer_max_late_ns = late_ns;
@@ -981,6 +992,9 @@ int main(int argc, char **argv) {
                                                         uint64_t late_ns = (uint64_t)(repo.systemClock.tv_sec - due->tv_sec) * 1000000000ULL +
                                                                            (uint64_t)(repo.systemClock.tv_nsec - due->tv_nsec);
                                                         win_diag_timer_calls++;
+                                                        win_diag_timer_slot_count[1]++;
+                                                        if (late_ns > win_diag_timer_slot_max_ns[1])
+                                                                win_diag_timer_slot_max_ns[1] = late_ns;
                                                         win_diag_timer_late_ns += late_ns;
                                                         if (late_ns > win_diag_timer_max_late_ns)
                                                                 win_diag_timer_max_late_ns = late_ns;
@@ -998,6 +1012,9 @@ int main(int argc, char **argv) {
                                                         uint64_t late_ns = (uint64_t)(repo.systemClock.tv_sec - due->tv_sec) * 1000000000ULL +
                                                                            (uint64_t)(repo.systemClock.tv_nsec - due->tv_nsec);
                                                         win_diag_timer_calls++;
+                                                        win_diag_timer_slot_count[2]++;
+                                                        if (late_ns > win_diag_timer_slot_max_ns[2])
+                                                                win_diag_timer_slot_max_ns[2] = late_ns;
                                                         win_diag_timer_late_ns += late_ns;
                                                         if (late_ns > win_diag_timer_max_late_ns)
                                                                 win_diag_timer_max_late_ns = late_ns;
