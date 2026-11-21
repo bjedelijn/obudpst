@@ -198,6 +198,9 @@ static uint64_t win_diag_last_ns = 0, win_diag_poll_ns = 0;
 static uint64_t win_diag_polls = 0, win_diag_zero_polls = 0;
 static uint64_t win_diag_timer_calls = 0, win_diag_timer_late_ns = 0;
 static uint64_t win_diag_timer_max_late_ns = 0;
+/* Optional high-resolution wait: keep a short guard before transmit deadlines. */
+static HANDLE win_send_wait_timer = NULL;
+static int win_send_wait_unavailable = 0;
 static uint64_t win_diag_timer_slot_count[3] = {0, 0, 0};
 static uint64_t win_diag_timer_slot_max_ns[3] = {0, 0, 0};
 #else
@@ -778,10 +781,56 @@ int main(int argc, char **argv) {
 #endif
 
 #ifdef _WIN32
-                /* Yield on sub-millisecond deadlines without forcing a 1 ms
-                 * socket wait. Re-evaluate the actual UTC deadline each pass. */
-                if (readyfds == 0 && var == 0)
-                        Sleep(0);
+                /* Avoid spinning hundreds of thousands of times per second
+                 * while waiting for a sub-millisecond send deadline. The wait
+                 * is capped at 200 us and leaves a 100 us deadline guard.
+                 * A zero-timeout socket poll runs again on the next pass.
+                 * Fall back to the original yield if high-res timers are not
+                 * supported by this Windows installation. */
+                if (readyfds == 0 && var == 0) {
+                        int wait_us = 0;
+                        struct timespec wait_now;
+                        int ti;
+                        UDPST_UPDATE_SYSTEM_CLOCK();
+                        wait_now = repo.systemClock;
+                        wait_us = 1000;
+                        for (ti = 0; ti <= repo.maxConnIndex; ++ti) {
+                                const struct timespec *due = &conn[ti].timer1Thresh;
+                                long long ns;
+                                if (!tspecisset(due))
+                                        continue;
+                                ns = ((long long)due->tv_sec - wait_now.tv_sec) * 1000000000LL +
+                                     ((long long)due->tv_nsec - wait_now.tv_nsec);
+                                if (ns <= 0) {
+                                        wait_us = 0;
+                                        break;
+                                }
+                                if (ns / 1000LL < wait_us)
+                                        wait_us = (int)(ns / 1000LL);
+                        }
+                        if (wait_us > 200 && !win_send_wait_unavailable) {
+                                LARGE_INTEGER relative_due;
+                                if (win_send_wait_timer == NULL) {
+                                        /* CREATE_WAITABLE_TIMER_HIGH_RESOLUTION (Windows 10+). */
+                                        win_send_wait_timer = CreateWaitableTimerExW(NULL, NULL, 0x00000002,
+                                                                                     TIMER_MODIFY_STATE | SYNCHRONIZE);
+                                        if (win_send_wait_timer == NULL)
+                                                win_send_wait_unavailable = 1;
+                                }
+                                if (win_send_wait_timer != NULL) {
+                                        int sleep_us = wait_us - 100;
+                                        if (sleep_us > 200)
+                                                sleep_us = 200;
+                                        relative_due.QuadPart = -(LONGLONG)sleep_us * 10;
+                                        if (SetWaitableTimer(win_send_wait_timer, &relative_due, 0, NULL, NULL, FALSE))
+                                                WaitForSingleObject(win_send_wait_timer, INFINITE);
+                                        else
+                                                win_send_wait_unavailable = 1;
+                                }
+                        } else {
+                                Sleep(0);
+                        }
+                }
 #endif
                 //
                 // Process FD(s)
