@@ -764,12 +764,19 @@ int send_loadpdu(int connindex, int transmitter) {
                 tspecvar.tv_sec  = 0;
                 tspecvar.tv_nsec = (long) ((txintpri - SEND_TIMER_ADJ) * NSECINUSEC);
 #ifdef _WIN32
-                /* Preserve the intended send cadence across late Windows timer
-                 * dispatches. Rebase only when the deadline is not initialized. */
-                if (tspecisset(tspecpri))
+                /* Preserve send cadence while bounding catch-up debt to 10 ms.
+                 * Prevent seconds of overdue timers from accumulating. */
+                if (tspecisset(tspecpri)) {
+                        struct timespec max_lag, lag_floor;
+                        max_lag.tv_sec = 0;
+                        max_lag.tv_nsec = 10000000L;
+                        tspecminus(&repo.systemClock, &max_lag, &lag_floor);
+                        if (tspeccmp(tspecpri, &lag_floor, <))
+                                tspeccpy(tspecpri, &lag_floor);
                         tspecplus(tspecpri, &tspecvar, tspecpri);
-                else
+                } else {
                         tspecplus(&repo.systemClock, &tspecvar, tspecpri);
+                }
 #else
                 tspecplus(&repo.systemClock, &tspecvar, tspecpri);
 #endif
