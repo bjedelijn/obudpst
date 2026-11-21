@@ -201,6 +201,9 @@ static uint64_t win_diag_timer_max_late_ns = 0;
 /* Optional high-resolution wait: keep a short guard before transmit deadlines. */
 static HANDLE win_send_wait_timer = NULL;
 static int win_send_wait_unavailable = 0;
+static uint64_t win_diag_wait_attempts = 0, win_diag_wait_success = 0;
+static uint64_t win_diag_wait_fallback = 0, win_diag_wait_errors = 0;
+static uint64_t win_diag_wait_elapsed_ns = 0;
 static uint64_t win_diag_timer_slot_count[3] = {0, 0, 0};
 static uint64_t win_diag_timer_slot_max_ns[3] = {0, 0, 0};
 #else
@@ -810,24 +813,42 @@ int main(int argc, char **argv) {
                         }
                         if (wait_us > 200 && !win_send_wait_unavailable) {
                                 LARGE_INTEGER relative_due;
+                                ++win_diag_wait_attempts;
                                 if (win_send_wait_timer == NULL) {
                                         /* CREATE_WAITABLE_TIMER_HIGH_RESOLUTION (Windows 10+). */
                                         win_send_wait_timer = CreateWaitableTimerExW(NULL, NULL, 0x00000002,
                                                                                      TIMER_MODIFY_STATE | SYNCHRONIZE);
-                                        if (win_send_wait_timer == NULL)
+                                        if (win_send_wait_timer == NULL) {
                                                 win_send_wait_unavailable = 1;
+                                                ++win_diag_wait_errors;
+                                        }
                                 }
                                 if (win_send_wait_timer != NULL) {
                                         int sleep_us = wait_us - 100;
                                         if (sleep_us > 200)
                                                 sleep_us = 200;
                                         relative_due.QuadPart = -(LONGLONG)sleep_us * 10;
-                                        if (SetWaitableTimer(win_send_wait_timer, &relative_due, 0, NULL, NULL, FALSE))
-                                                WaitForSingleObject(win_send_wait_timer, INFINITE);
-                                        else
+                                        if (SetWaitableTimer(win_send_wait_timer, &relative_due, 0, NULL, NULL, FALSE)) {
+                                                uint64_t before_ns = 0, after_ns = 0;
+                                                DWORD wait_result;
+                                                udpst_win32_monotonic_ns(&before_ns);
+                                                wait_result = WaitForSingleObject(win_send_wait_timer, INFINITE);
+                                                udpst_win32_monotonic_ns(&after_ns);
+                                                if (wait_result == WAIT_OBJECT_0) {
+                                                        ++win_diag_wait_success;
+                                                        if (after_ns >= before_ns)
+                                                                win_diag_wait_elapsed_ns += after_ns - before_ns;
+                                                } else {
+                                                        ++win_diag_wait_errors;
+                                                        win_send_wait_unavailable = 1;
+                                                }
+                                        } else {
+                                                ++win_diag_wait_errors;
                                                 win_send_wait_unavailable = 1;
+                                        }
                                 }
                         } else {
+                                ++win_diag_wait_fallback;
                                 Sleep(0);
                         }
                 }
@@ -942,10 +963,19 @@ int main(int argc, char **argv) {
                                                 (unsigned long long)win_diag_timer_calls,
                                                 win_diag_timer_calls ? (double)win_diag_timer_late_ns / (double)win_diag_timer_calls / 1000.0 : 0.0,
                                                 (double)win_diag_timer_max_late_ns / 1000.0);
-                                        fprintf(stderr, "[UDPST-TIMER-SLOTS] t1=%llu max1_us=%.1f t2=%llu max2_us=%.1f t3=%llu max3_us=%.1f\\n",
+                                        fprintf(stderr, "[UDPST-TIMER-SLOTS] t1=%llu max1_us=%.1f t2=%llu max2_us=%.1f t3=%llu max3_us=%.1f\n",
                                                 (unsigned long long)win_diag_timer_slot_count[0], (double)win_diag_timer_slot_max_ns[0] / 1000.0,
                                                 (unsigned long long)win_diag_timer_slot_count[1], (double)win_diag_timer_slot_max_ns[1] / 1000.0,
                                                 (unsigned long long)win_diag_timer_slot_count[2], (double)win_diag_timer_slot_max_ns[2] / 1000.0);
+                                        fprintf(stderr, "[UDPST-WAIT] attempts=%llu success=%llu fallback=%llu errors=%llu avg_wait_us=%.1f unavailable=%d\n",
+                                                (unsigned long long)win_diag_wait_attempts,
+                                                (unsigned long long)win_diag_wait_success,
+                                                (unsigned long long)win_diag_wait_fallback,
+                                                (unsigned long long)win_diag_wait_errors,
+                                                win_diag_wait_success ? (double)win_diag_wait_elapsed_ns / (double)win_diag_wait_success / 1000.0 : 0.0,
+                                                win_send_wait_unavailable);
+                                        win_diag_wait_attempts = win_diag_wait_success = win_diag_wait_fallback = 0;
+                                        win_diag_wait_errors = win_diag_wait_elapsed_ns = 0;
                                         memset(win_diag_timer_slot_count, 0, sizeof(win_diag_timer_slot_count));
                                         memset(win_diag_timer_slot_max_ns, 0, sizeof(win_diag_timer_slot_max_ns));
                                         win_diag_last_ns = diag_now_ns;
