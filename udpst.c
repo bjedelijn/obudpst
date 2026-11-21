@@ -192,6 +192,12 @@ static volatile sig_atomic_t sig_exit = 0;    // Interrupt indicator
 /* WSAPoll returns connection indices without narrowing SOCKET handles. */
 static udpst_win32_poll_entry win_poll_entries[MAX_EPOLL_EVENTS];
 static unsigned int win_ready_indices[MAX_EPOLL_EVENTS];
+/* Opt-in timing diagnostics; stderr only, never mixed into JSON results. */
+static int win_timing_diag = 0;
+static uint64_t win_diag_last_ns = 0, win_diag_poll_ns = 0;
+static uint64_t win_diag_polls = 0, win_diag_zero_polls = 0;
+static uint64_t win_diag_timer_calls = 0, win_diag_timer_late_ns = 0;
+static uint64_t win_diag_timer_max_late_ns = 0;
 #else
 struct epoll_event epoll_events[MAX_EPOLL_EVENTS];
 #endif
@@ -670,6 +676,12 @@ int main(int argc, char **argv) {
         //
         // Primary control loop
         //
+#ifdef _WIN32
+        win_timing_diag = (getenv("UDPST_TIMING_DIAG") != NULL &&
+                           strcmp(getenv("UDPST_TIMING_DIAG"), "0") != 0);
+        if (win_timing_diag)
+                udpst_win32_monotonic_ns(&win_diag_last_ns);
+#endif
         repo.idleConnIndex = repo.maxConnIndex; // Save idle connection index
         while (!sig_exit) {
 #ifdef DISABLE_INT_TIMER
@@ -728,7 +740,10 @@ int main(int argc, char **argv) {
 #endif
 #ifdef _WIN32
                 {
+                        uint64_t poll_start_ns = 0, poll_end_ns = 0;
                         ULONG poll_count = 0;
+                        if (win_timing_diag)
+                                udpst_win32_monotonic_ns(&poll_start_ns);
                         int poll_index;
                         for (poll_index = 0; poll_index <= repo.maxConnIndex &&
                              poll_count < MAX_EPOLL_EVENTS; ++poll_index) {
@@ -747,6 +762,13 @@ int main(int argc, char **argv) {
                                 /* WSAPoll rejects an empty socket set. */
                                 Sleep((DWORD)var);
                                 readyfds = 0;
+                        }
+                        if (win_timing_diag && udpst_win32_monotonic_ns(&poll_end_ns) == 0) {
+                                win_diag_polls++;
+                                if (var == 0)
+                                        win_diag_zero_polls++;
+                                if (poll_end_ns >= poll_start_ns)
+                                        win_diag_poll_ns += poll_end_ns - poll_start_ns;
                         }
                 }
 #else
@@ -857,6 +879,24 @@ int main(int argc, char **argv) {
                                                 psM->timCoalesceSize = (unsigned int) var;
                                 }
                         }
+#ifdef _WIN32
+                        if (win_timing_diag) {
+                                uint64_t diag_now_ns = 0;
+                                if (udpst_win32_monotonic_ns(&diag_now_ns) == 0 &&
+                                    diag_now_ns >= win_diag_last_ns + 1000000000ULL) {
+                                        fprintf(stderr, "[UDPST-TIMING] polls=%llu zero_ms=%llu poll_avg_us=%.1f timers=%llu late_avg_us=%.1f late_max_us=%.1f\n",
+                                                (unsigned long long)win_diag_polls,
+                                                (unsigned long long)win_diag_zero_polls,
+                                                win_diag_polls ? (double)win_diag_poll_ns / (double)win_diag_polls / 1000.0 : 0.0,
+                                                (unsigned long long)win_diag_timer_calls,
+                                                win_diag_timer_calls ? (double)win_diag_timer_late_ns / (double)win_diag_timer_calls / 1000.0 : 0.0,
+                                                (double)win_diag_timer_max_late_ns / 1000.0);
+                                        win_diag_last_ns = diag_now_ns;
+                                        win_diag_poll_ns = win_diag_polls = win_diag_zero_polls = 0;
+                                        win_diag_timer_calls = win_diag_timer_late_ns = win_diag_timer_max_late_ns = 0;
+                                }
+                        }
+#endif
                         //
                         // Clear alarm signal counter
                         //
@@ -918,18 +958,51 @@ int main(int argc, char **argv) {
                                 var2 = 0;
                                 if (tspecisset(&conn[i].timer1Thresh)) {
                                         if (tspeccmp(&repo.systemClock, &conn[i].timer1Thresh, >)) {
+#ifdef _WIN32
+                                                if (win_timing_diag) {
+                                                        const struct timespec *due = &conn[i].timer1Thresh;
+                                                        uint64_t late_ns = (uint64_t)(repo.systemClock.tv_sec - due->tv_sec) * 1000000000ULL +
+                                                                           (uint64_t)(repo.systemClock.tv_nsec - due->tv_nsec);
+                                                        win_diag_timer_calls++;
+                                                        win_diag_timer_late_ns += late_ns;
+                                                        if (late_ns > win_diag_timer_max_late_ns)
+                                                                win_diag_timer_max_late_ns = late_ns;
+                                                }
+#endif
                                                 (conn[i].timer1Action)(i);
                                                 var2++;
                                         }
                                 }
                                 if (tspecisset(&conn[i].timer2Thresh)) {
                                         if (tspeccmp(&repo.systemClock, &conn[i].timer2Thresh, >)) {
+#ifdef _WIN32
+                                                if (win_timing_diag) {
+                                                        const struct timespec *due = &conn[i].timer2Thresh;
+                                                        uint64_t late_ns = (uint64_t)(repo.systemClock.tv_sec - due->tv_sec) * 1000000000ULL +
+                                                                           (uint64_t)(repo.systemClock.tv_nsec - due->tv_nsec);
+                                                        win_diag_timer_calls++;
+                                                        win_diag_timer_late_ns += late_ns;
+                                                        if (late_ns > win_diag_timer_max_late_ns)
+                                                                win_diag_timer_max_late_ns = late_ns;
+                                                }
+#endif
                                                 (conn[i].timer2Action)(i);
                                                 var2++;
                                         }
                                 }
                                 if (tspecisset(&conn[i].timer3Thresh)) {
                                         if (tspeccmp(&repo.systemClock, &conn[i].timer3Thresh, >)) {
+#ifdef _WIN32
+                                                if (win_timing_diag) {
+                                                        const struct timespec *due = &conn[i].timer3Thresh;
+                                                        uint64_t late_ns = (uint64_t)(repo.systemClock.tv_sec - due->tv_sec) * 1000000000ULL +
+                                                                           (uint64_t)(repo.systemClock.tv_nsec - due->tv_nsec);
+                                                        win_diag_timer_calls++;
+                                                        win_diag_timer_late_ns += late_ns;
+                                                        if (late_ns > win_diag_timer_max_late_ns)
+                                                                win_diag_timer_max_late_ns = late_ns;
+                                                }
+#endif
                                                 (conn[i].timer3Action)(i);
                                                 var2++;
                                         }
