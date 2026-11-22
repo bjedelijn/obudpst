@@ -127,8 +127,18 @@ jobs:
           if ($files.Count -ne 1 -or $files[0].Name -ne "udpst.exe") {
             throw "Windows artifact must contain udpst.exe only"
           }
-          $imports = & dumpbin /DEPENDENTS $files[0].FullName | Out-String
+          # Locate dumpbin through the Visual Studio installation rather than PATH.
+          $vswhere = "${env:ProgramFiles(x86)}/Microsoft Visual Studio/Installer/vswhere.exe"
+          if (-not (Test-Path $vswhere)) { throw "vswhere.exe not found" }
+          $vsRoot = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (-not $vsRoot) { throw "Visual Studio C++ tools not found" }
+          $dumpbin = Get-ChildItem (Join-Path $vsRoot "VC/Tools/MSVC") -Filter dumpbin.exe -Recurse -File |
+            Where-Object { $_.FullName -match '[\\/]Hostx64[\\/]x64[\\/]' } |
+            Select-Object -First 1
+          if (-not $dumpbin) { throw "x64 dumpbin.exe not found in Visual Studio" }
+          $imports = & $dumpbin.FullName /DEPENDENTS $files[0].FullName | Out-String
           if ($LASTEXITCODE -ne 0) { throw "Unable to inspect executable dependencies" }
+          Write-Host $imports
           if ($imports -match '(?i)libcrypto|libssl|vcruntime|msvcp') {
             throw "Executable has unexpected dynamic runtime dependency: $imports"
           }
