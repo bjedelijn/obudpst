@@ -725,6 +725,10 @@ int main(int argc, char **argv) {
                                         &tc->timer2Thresh, &tc->timer3Thresh
                                 };
                                 int timer_slot;
+                                /* Free slots have no active timer work. Retained
+                                 * timestamps must not force a zero-timeout poll. */
+                                if (tc->state == S_FREE)
+                                        continue;
                                 for (timer_slot = 0; timer_slot < 4; ++timer_slot) {
                                         const struct timespec *deadline = deadlines[timer_slot];
                                         long long remaining_ns;
