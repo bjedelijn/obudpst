@@ -800,6 +800,11 @@ int main(int argc, char **argv) {
                         for (ti = 0; ti <= repo.maxConnIndex; ++ti) {
                                 const struct timespec *due = &conn[ti].timer1Thresh;
                                 long long ns;
+                                /* Only S_DATA connections execute timer1 actions.
+                                 * Stale thresholds from other states must not
+                                 * force the event loop into perpetual polling. */
+                                if (conn[ti].state != S_DATA)
+                                        continue;
                                 if (!tspecisset(due))
                                         continue;
                                 ns = ((long long)due->tv_sec - wait_now.tv_sec) * 1000000000LL +
