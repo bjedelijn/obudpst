@@ -95,8 +95,21 @@ jobs:
     runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
-      - name: Configure MSVC x64
-        run: cmake -S . -B build-link-probe -A x64
+      - name: Install static OpenSSL with vcpkg
+        shell: pwsh
+        run: |
+          $vcpkg = Join-Path $env:VCPKG_INSTALLATION_ROOT "vcpkg.exe"
+          if (-not (Test-Path $vcpkg)) { throw "vcpkg.exe not found" }
+          & $vcpkg install openssl:x64-windows-static
+          if ($LASTEXITCODE -ne 0) { throw "Static OpenSSL installation failed" }
+      - name: Configure MSVC x64 with static OpenSSL
+        shell: pwsh
+        run: |
+          cmake -S . -B build-link-probe -A x64 `
+            "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" `
+            "-DVCPKG_TARGET_TRIPLET=x64-windows-static" `
+            "-DOPENSSL_USE_STATIC_LIBS=TRUE"
+          if ($LASTEXITCODE -ne 0) { throw "Static OpenSSL configuration failed" }
       - name: Build full Windows executable (strict)
         shell: pwsh
         run: |
@@ -104,19 +117,22 @@ jobs:
           $status = $LASTEXITCODE
           Get-Content link-errors.log
           exit $status
-      - name: Stage portable Windows runtime
+      - name: Stage standalone Windows executable
         shell: pwsh
         run: |
           $stage = Join-Path $PWD "windows-package"
           New-Item -ItemType Directory -Path $stage -Force | Out-Null
           Copy-Item "build-link-probe/Release/udpst.exe" $stage
-          $crypto = Get-ChildItem "C:/Program Files/OpenSSL", "C:/Program Files", "C:/hostedtoolcache/windows" -Filter "libcrypto-3-x64.dll" -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1
-          if (-not $crypto) {
-            throw "Required OpenSSL runtime libcrypto-3-x64.dll not found; refusing incomplete package"
+          $files = @(Get-ChildItem $stage -File)
+          if ($files.Count -ne 1 -or $files[0].Name -ne "udpst.exe") {
+            throw "Windows artifact must contain udpst.exe only"
           }
-          Copy-Item $crypto.FullName $stage
-          Write-Host "Bundled OpenSSL runtime from $($crypto.FullName)"
-          Get-ChildItem $stage | Select-Object Name, Length
+          $imports = & dumpbin /DEPENDENTS $files[0].FullName | Out-String
+          if ($LASTEXITCODE -ne 0) { throw "Unable to inspect executable dependencies" }
+          if ($imports -match '(?i)libcrypto|libssl|vcruntime|msvcp') {
+            throw "Executable has unexpected dynamic runtime dependency: $imports"
+          }
+          Write-Host "Standalone udpst.exe verified (no OpenSSL or MSVC runtime DLL imports)"
       - name: Smoke test Windows executable
         shell: pwsh
         timeout-minutes: 2
