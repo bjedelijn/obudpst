@@ -204,6 +204,8 @@ static int win_send_wait_unavailable = 0;
 static uint64_t win_diag_wait_attempts = 0, win_diag_wait_success = 0;
 static uint64_t win_diag_wait_fallback = 0, win_diag_wait_errors = 0;
 static uint64_t win_diag_wait_elapsed_ns = 0;
+static uint64_t win_diag_wait_due = 0, win_diag_wait_short = 0;
+static uint64_t win_diag_wait_no_data_timer = 0;
 static uint64_t win_diag_timer_slot_count[3] = {0, 0, 0};
 static uint64_t win_diag_timer_slot_max_ns[3] = {0, 0, 0};
 #else
@@ -794,6 +796,7 @@ int main(int argc, char **argv) {
                         int wait_us = 0;
                         struct timespec wait_now;
                         int ti;
+                        int active_data_timers = 0;
                         UDPST_UPDATE_SYSTEM_CLOCK();
                         wait_now = repo.systemClock;
                         wait_us = 1000;
@@ -807,6 +810,7 @@ int main(int argc, char **argv) {
                                         continue;
                                 if (!tspecisset(due))
                                         continue;
+                                ++active_data_timers;
                                 ns = ((long long)due->tv_sec - wait_now.tv_sec) * 1000000000LL +
                                      ((long long)due->tv_nsec - wait_now.tv_nsec);
                                 if (ns <= 0) {
@@ -854,6 +858,12 @@ int main(int argc, char **argv) {
                                 }
                         } else {
                                 ++win_diag_wait_fallback;
+                                if (active_data_timers == 0)
+                                        ++win_diag_wait_no_data_timer;
+                                else if (wait_us == 0)
+                                        ++win_diag_wait_due;
+                                else
+                                        ++win_diag_wait_short;
                                 Sleep(0);
                         }
                 }
@@ -979,6 +989,11 @@ int main(int argc, char **argv) {
                                                 (unsigned long long)win_diag_wait_errors,
                                                 win_diag_wait_success ? (double)win_diag_wait_elapsed_ns / (double)win_diag_wait_success / 1000.0 : 0.0,
                                                 win_send_wait_unavailable);
+                                        fprintf(stderr, "[UDPST-WAIT-REASONS] due=%llu short=%llu no_data_timer=%llu\n",
+                                                (unsigned long long)win_diag_wait_due,
+                                                (unsigned long long)win_diag_wait_short,
+                                                (unsigned long long)win_diag_wait_no_data_timer);
+                                        win_diag_wait_due = win_diag_wait_short = win_diag_wait_no_data_timer = 0;
                                         win_diag_wait_attempts = win_diag_wait_success = win_diag_wait_fallback = 0;
                                         win_diag_wait_errors = win_diag_wait_elapsed_ns = 0;
                                         memset(win_diag_timer_slot_count, 0, sizeof(win_diag_timer_slot_count));
