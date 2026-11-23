@@ -553,6 +553,10 @@ uint64_t udpst_win_send_ok_bytes = 0;
 uint64_t udpst_win_send_ok_packets = 0;
 uint64_t udpst_win_send_failed = 0;
 uint64_t udpst_win_send_wouldblock = 0;
+uint64_t udpst_win_scheduled_packets = 0;
+uint64_t udpst_win_pacing_late_events = 0;
+uint64_t udpst_win_pacing_late_max_us = 0;
+uint64_t udpst_win_pacing_debt_clamps = 0;
 #endif
 
 static void _sendmsg_burst(int connindex, int totalburst, int burstsize, unsigned int payload, unsigned int addon) {
@@ -772,6 +776,23 @@ int send_loadpdu(int connindex, int transmitter) {
                 tspecpri = &c->timer2Thresh;
                 tspecalt = &c->timer1Thresh;
         }
+#ifdef _WIN32
+        /* Count planned datagrams independently of socket acceptance. */
+        if (c->testAction == TEST_ACT_TEST) {
+                udpst_win_scheduled_packets += (uint64_t)(burstsize > 0 ? burstsize : 0);
+                if (transmitter == 2 && addon > 0) ++udpst_win_scheduled_packets;
+                if (tspecisset(tspecpri) && tspeccmp(&repo.systemClock, tspecpri, >)) {
+                        struct timespec pacing_lag;
+                        uint64_t lag_us;
+                        tspecminus(&repo.systemClock, tspecpri, &pacing_lag);
+                        lag_us = (uint64_t)pacing_lag.tv_sec * 1000000ULL +
+                                 (uint64_t)pacing_lag.tv_nsec / 1000ULL;
+                        ++udpst_win_pacing_late_events;
+                        if (lag_us > udpst_win_pacing_late_max_us)
+                                udpst_win_pacing_late_max_us = lag_us;
+                }
+        }
+#endif
         //
         // Reset or clear primary timer (this one)
         //
@@ -786,8 +807,10 @@ int send_loadpdu(int connindex, int transmitter) {
                         max_lag.tv_sec = 0;
                         max_lag.tv_nsec = 10000000L;
                         tspecminus(&repo.systemClock, &max_lag, &lag_floor);
-                        if (tspeccmp(tspecpri, &lag_floor, <))
+                        if (tspeccmp(tspecpri, &lag_floor, <)) {
+                                if (c->testAction == TEST_ACT_TEST) ++udpst_win_pacing_debt_clamps;
                                 tspeccpy(tspecpri, &lag_floor);
+                        }
                         tspecplus(tspecpri, &tspecvar, tspecpri);
                 } else {
                         tspecplus(&repo.systemClock, &tspecvar, tspecpri);
