@@ -206,6 +206,10 @@ static uint64_t win_diag_wait_fallback = 0, win_diag_wait_errors = 0;
 static uint64_t win_diag_wait_elapsed_ns = 0;
 static uint64_t win_diag_wait_due = 0, win_diag_wait_short = 0;
 static uint64_t win_diag_wait_no_data_timer = 0;
+/* Deadline proximity histogram; diagnostic only, no pacing changes. */
+static uint64_t win_diag_deadline_due = 0, win_diag_deadline_1_10 = 0;
+static uint64_t win_diag_deadline_11_35 = 0, win_diag_deadline_36_100 = 0;
+static uint64_t win_diag_deadline_over_100 = 0;
 static uint64_t win_diag_timer_slot_count[3] = {0, 0, 0};
 static uint64_t win_diag_timer_slot_max_ns[3] = {0, 0, 0};
 #else
@@ -824,6 +828,13 @@ int main(int argc, char **argv) {
                                 if (ns / 1000LL < wait_us)
                                         wait_us = (int)(ns / 1000LL);
                         }
+                        if (win_timing_diag && active_data_timers > 0) {
+                                if (wait_us == 0) ++win_diag_deadline_due;
+                                else if (wait_us <= 10) ++win_diag_deadline_1_10;
+                                else if (wait_us <= 35) ++win_diag_deadline_11_35;
+                                else if (wait_us <= 100) ++win_diag_deadline_36_100;
+                                else ++win_diag_deadline_over_100;
+                        }
                         if (wait_us > 35 && !win_send_wait_unavailable) {
                                 LARGE_INTEGER relative_due;
                                 ++win_diag_wait_attempts;
@@ -997,6 +1008,14 @@ int main(int argc, char **argv) {
                                                 (unsigned long long)win_diag_wait_due,
                                                 (unsigned long long)win_diag_wait_short,
                                                 (unsigned long long)win_diag_wait_no_data_timer);
+                                        fprintf(stderr, "[UDPST-DEADLINES] due=%llu us1_10=%llu us11_35=%llu us36_100=%llu us_over100=%llu\n",
+                                                (unsigned long long)win_diag_deadline_due,
+                                                (unsigned long long)win_diag_deadline_1_10,
+                                                (unsigned long long)win_diag_deadline_11_35,
+                                                (unsigned long long)win_diag_deadline_36_100,
+                                                (unsigned long long)win_diag_deadline_over_100);
+                                        win_diag_deadline_due = win_diag_deadline_1_10 = 0;
+                                        win_diag_deadline_11_35 = win_diag_deadline_36_100 = win_diag_deadline_over_100 = 0;
                                         win_diag_wait_due = win_diag_wait_short = win_diag_wait_no_data_timer = 0;
                                         win_diag_wait_attempts = win_diag_wait_success = win_diag_wait_fallback = 0;
                                         win_diag_wait_errors = win_diag_wait_elapsed_ns = 0;
