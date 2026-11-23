@@ -813,7 +813,20 @@ int send_loadpdu(int connindex, int transmitter) {
                 if (tspecisset(tspecpri)) {
                         struct timespec max_lag, lag_floor;
                         max_lag.tv_sec = 0;
-                        max_lag.tv_nsec = 10000000L;
+                        /* Default remains 10 ms. Override for controlled A/B tests
+                         * using UDPST_WIN_PACING_MAX_LAG_MS (1..100). */
+                        {
+                                static int configured_lag_ms = -1;
+                                if (configured_lag_ms < 0) {
+                                        const char *setting = getenv("UDPST_WIN_PACING_MAX_LAG_MS");
+                                        char *endptr = NULL;
+                                        long parsed = setting ? strtol(setting, &endptr, 10) : 0;
+                                        configured_lag_ms = (setting && endptr != setting &&
+                                                             *endptr == '\0' && parsed >= 1 &&
+                                                             parsed <= 100) ? (int)parsed : 10;
+                                }
+                                max_lag.tv_nsec = (long)configured_lag_ms * 1000000L;
+                        }
                         tspecminus(&repo.systemClock, &max_lag, &lag_floor);
                         if (tspeccmp(tspecpri, &lag_floor, <)) {
                                 if (c->testAction == TEST_ACT_TEST) ++udpst_win_pacing_debt_clamps;
