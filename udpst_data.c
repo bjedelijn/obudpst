@@ -2458,7 +2458,19 @@ int output_maxrate(int connindex) {
                         cJSON_AddNumberPToObject(json_summary, "RTTRangeSummary", dvar, -9);
                         //
 #ifdef _WIN32
-                        if (getenv("UDPST_SUMMARY_DIAG") != NULL && !repo.isServer) {
+                        /* Summary serialization may run repeatedly. Print each
+                         * mode/sample-count/receive-count combination once. */
+                        static unsigned int last_diag_samples[2] = {0, 0};
+                        static unsigned int last_diag_received[2] = {0, 0};
+                        static int last_diag_seen[2] = {0, 0};
+                        if (getenv("UDPST_SUMMARY_DIAG") != NULL && !repo.isServer &&
+                            i >= 0 && i < 2 &&
+                            (!last_diag_seen[i] ||
+                             last_diag_samples[i] != ts->sampleCount ||
+                             last_diag_received[i] != ts->rxDatagrams)) {
+                                last_diag_seen[i] = 1;
+                                last_diag_samples[i] = ts->sampleCount;
+                                last_diag_received[i] = ts->rxDatagrams;
                                 fprintf(stderr, "[UDPST-SUMMARY-FINAL] mode=%d samples=%u received=%u avg_mbps=%.6f\n",
                                         i + 1, ts->sampleCount, ts->rxDatagrams, avgRateL3);
                         }
