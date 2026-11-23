@@ -792,7 +792,7 @@ int main(int argc, char **argv) {
 #ifdef _WIN32
                 /* Avoid spinning hundreds of thousands of times per second
                  * while waiting for a sub-millisecond send deadline. The wait
-                 * is capped at 100 us and leaves a 25 us deadline guard.
+                 * is capped at 100 us and leaves a 15 us deadline guard.
                  * A zero-timeout socket poll runs again on the next pass.
                  * Fall back to the original yield if high-res timers are not
                  * supported by this Windows installation. */
@@ -824,7 +824,7 @@ int main(int argc, char **argv) {
                                 if (ns / 1000LL < wait_us)
                                         wait_us = (int)(ns / 1000LL);
                         }
-                        if (wait_us > 75 && !win_send_wait_unavailable) {
+                        if (wait_us > 35 && !win_send_wait_unavailable) {
                                 LARGE_INTEGER relative_due;
                                 ++win_diag_wait_attempts;
                                 if (win_send_wait_timer == NULL) {
@@ -837,7 +837,7 @@ int main(int argc, char **argv) {
                                         }
                                 }
                                 if (win_send_wait_timer != NULL) {
-                                        int sleep_us = wait_us - 25;
+                                        int sleep_us = wait_us - 15;
                                         if (sleep_us > 100)
                                                 sleep_us = 100;
                                         relative_due.QuadPart = -(LONGLONG)sleep_us * 10;
