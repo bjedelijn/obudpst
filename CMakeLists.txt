@@ -28,6 +28,14 @@
 # POSSIBILITY OF SUCH DAMAGE.
 cmake_minimum_required(VERSION 3.5...3.10)
 project(OB-UDPST)
+# A standalone Windows client must not depend on the Visual C++ redistributable.
+# CMake 3.15+ supports CMP0091 and MSVC_RUNTIME_LIBRARY; set before targets.
+if(WIN32 AND MSVC)
+    if(POLICY CMP0091)
+        cmake_policy(SET CMP0091 NEW)
+    endif()
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+endif()
 if(${CMAKE_VERSION} VERSION_GREATER "3.3.0")
         cmake_policy(SET CMP0057 NEW)
 endif()
