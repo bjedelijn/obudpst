@@ -547,6 +547,14 @@ static void _sendmmsg_burst(int connindex, int totalburst, int burstsize, unsign
 //
 // Send a burst of messages using the slower but more widely available sendmsg syscall
 //
+/* Windows send-side counters: accepted by Winsock, not proof of wire delivery. */
+#ifdef _WIN32
+uint64_t udpst_win_send_ok_bytes = 0;
+uint64_t udpst_win_send_ok_packets = 0;
+uint64_t udpst_win_send_failed = 0;
+uint64_t udpst_win_send_wouldblock = 0;
+#endif
+
 static void _sendmsg_burst(int connindex, int totalburst, int burstsize, unsigned int payload, unsigned int addon) {
         register struct connection *c = &conn[connindex];
 #ifndef _WIN32
@@ -613,6 +621,13 @@ static void _sendmsg_burst(int connindex, int totalburst, int burstsize, unsigne
                 /* Connected UDP sockets: one send() corresponds to one datagram. */
                 var       = send(c->winSocket, (const char *)lHdr, (int)uvar, 0);
                 senderrno = (var == SOCKET_ERROR) ? WSAGetLastError() : 0;
+                if (var > 0) {
+                        udpst_win_send_ok_bytes += (uint64_t)var;
+                        ++udpst_win_send_ok_packets;
+                } else {
+                        ++udpst_win_send_failed;
+                        if (senderrno == WSAEWOULDBLOCK) ++udpst_win_send_wouldblock;
+                }
 #else
                 var       = sendmsg(c->fd, &msg, 0);
                 senderrno = errno;
