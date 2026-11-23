@@ -195,6 +195,8 @@ static unsigned int win_ready_indices[MAX_EPOLL_EVENTS];
 /* Opt-in timing diagnostics; stderr only, never mixed into JSON results. */
 extern uint64_t udpst_win_send_ok_bytes, udpst_win_send_ok_packets;
 extern uint64_t udpst_win_send_failed, udpst_win_send_wouldblock;
+extern uint64_t udpst_win_scheduled_packets, udpst_win_pacing_late_events;
+extern uint64_t udpst_win_pacing_late_max_us, udpst_win_pacing_debt_clamps;
 static int win_timing_diag = 0;
 static uint64_t win_diag_last_ns = 0, win_diag_poll_ns = 0;
 static uint64_t win_diag_polls = 0, win_diag_zero_polls = 0;
@@ -1017,6 +1019,13 @@ int main(int argc, char **argv) {
                                                 (unsigned long long)udpst_win_send_wouldblock);
                                         udpst_win_send_ok_bytes = udpst_win_send_ok_packets = 0;
                                         udpst_win_send_failed = udpst_win_send_wouldblock = 0;
+                                        fprintf(stderr, "[UDPST-PACING] scheduled_packets=%llu late_events=%llu late_max_us=%llu debt_clamps=%llu\n",
+                                                (unsigned long long)udpst_win_scheduled_packets,
+                                                (unsigned long long)udpst_win_pacing_late_events,
+                                                (unsigned long long)udpst_win_pacing_late_max_us,
+                                                (unsigned long long)udpst_win_pacing_debt_clamps);
+                                        udpst_win_scheduled_packets = udpst_win_pacing_late_events = 0;
+                                        udpst_win_pacing_late_max_us = udpst_win_pacing_debt_clamps = 0;
                                         fprintf(stderr, "[UDPST-DEADLINES] due=%llu us1_10=%llu us11_35=%llu us36_100=%llu us_over100=%llu\n",
                                                 (unsigned long long)win_diag_deadline_due,
                                                 (unsigned long long)win_diag_deadline_1_10,
