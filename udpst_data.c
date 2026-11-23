@@ -2396,6 +2396,12 @@ int output_maxrate(int connindex) {
                         dvar = (double) (ts->rttVarMaximum - ts->rttVarMinimum) / 1000.0;
                         cJSON_AddNumberPToObject(json_summary, "RTTRangeSummary", dvar, -9);
                         //
+#ifdef _WIN32
+                        if (getenv("UDPST_SUMMARY_DIAG") != NULL && !repo.isServer) {
+                                fprintf(stderr, "[UDPST-SUMMARY-FINAL] mode=%d samples=%u received=%u avg_mbps=%.6f\n",
+                                        i + 1, ts->sampleCount, ts->rxDatagrams, ts->rateSumL3);
+                        }
+#endif
                         cJSON_AddNumberPToObject(json_summary, "IPLayerCapacitySummary", ts->rateSumL3, 2);
                         cJSON_AddNumberPToObject(json_summary, "InterfaceEthMbps", ts->rateSumIntf, 2);
                         //
