@@ -1021,6 +1021,21 @@ int main(int argc, char **argv) {
                                                 (unsigned long long)udpst_win_send_wouldblock);
                                         udpst_win_send_ok_bytes = udpst_win_send_ok_packets = 0;
                                         udpst_win_send_failed = udpst_win_send_wouldblock = 0;
+                                        /* Diagnostic classification only; never alter TR-471 JSON.
+                                         * Sustained >10 ms lateness or debt clamping indicates
+                                         * sender pacing cannot be trusted as network capacity. */
+                                        if (udpst_win_pacing_debt_clamps > 0 ||
+                                            (udpst_win_scheduled_packets > 0 &&
+                                             udpst_win_late_gt_10000us * 10ULL >
+                                             udpst_win_scheduled_packets)) {
+                                                fprintf(stderr, "[UDPST-CLIENT-HEALTH] state=CLIENT_LIMITED_SUSPECT reason=pacing_late_or_clamped late_gt10ms=%llu clamps=%llu (diagnostic_only)\n",
+                                                        (unsigned long long)udpst_win_late_gt_10000us,
+                                                        (unsigned long long)udpst_win_pacing_debt_clamps);
+                                        } else {
+                                                fprintf(stderr, "[UDPST-CLIENT-HEALTH] state=OK_OR_UNDETERMINED late_gt10ms=%llu clamps=%llu (diagnostic_only)\n",
+                                                        (unsigned long long)udpst_win_late_gt_10000us,
+                                                        (unsigned long long)udpst_win_pacing_debt_clamps);
+                                        }
                                         fprintf(stderr, "[UDPST-PACING] scheduled_packets=%llu late_events=%llu late_max_us=%llu debt_clamps=%llu\n",
                                                 (unsigned long long)udpst_win_scheduled_packets,
                                                 (unsigned long long)udpst_win_pacing_late_events,
