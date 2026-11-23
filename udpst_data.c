@@ -2225,6 +2225,13 @@ int output_currate(int connindex) {
                 ts->rttVarCnt += c->rttVarCnt;
                 ts->rxCECount += c->sisSavCECount; // Total CE count
                 ts->rateSumL3 += (double) mbps;
+#ifdef _WIN32
+                /* Diagnostic only: distinguish bad aggregate input from summary formatting. */
+                if (getenv("UDPST_SUMMARY_DIAG") != NULL && !repo.isServer) {
+                        fprintf(stderr, "[UDPST-SUMMARY] interval=%u mbps=%.3f accumulated=%.3f samples=%u\n",
+                                c->subIntCount, mbps, ts->rateSumL3, ts->sampleCount + 1);
+                }
+#endif
                 ts->rateSumIntf += (double) intfmbps;
                 ts->sampleCount++;
 
