@@ -193,6 +193,8 @@ static volatile sig_atomic_t sig_exit = 0;    // Interrupt indicator
 static udpst_win32_poll_entry win_poll_entries[MAX_EPOLL_EVENTS];
 static unsigned int win_ready_indices[MAX_EPOLL_EVENTS];
 /* Opt-in timing diagnostics; stderr only, never mixed into JSON results. */
+extern uint64_t udpst_win_send_ok_bytes, udpst_win_send_ok_packets;
+extern uint64_t udpst_win_send_failed, udpst_win_send_wouldblock;
 static int win_timing_diag = 0;
 static uint64_t win_diag_last_ns = 0, win_diag_poll_ns = 0;
 static uint64_t win_diag_polls = 0, win_diag_zero_polls = 0;
@@ -1008,6 +1010,13 @@ int main(int argc, char **argv) {
                                                 (unsigned long long)win_diag_wait_due,
                                                 (unsigned long long)win_diag_wait_short,
                                                 (unsigned long long)win_diag_wait_no_data_timer);
+                                        fprintf(stderr, "[UDPST-SEND] accepted_bytes=%llu accepted_packets=%llu failed=%llu wouldblock=%llu (Winsock acceptance only)\n",
+                                                (unsigned long long)udpst_win_send_ok_bytes,
+                                                (unsigned long long)udpst_win_send_ok_packets,
+                                                (unsigned long long)udpst_win_send_failed,
+                                                (unsigned long long)udpst_win_send_wouldblock);
+                                        udpst_win_send_ok_bytes = udpst_win_send_ok_packets = 0;
+                                        udpst_win_send_failed = udpst_win_send_wouldblock = 0;
                                         fprintf(stderr, "[UDPST-DEADLINES] due=%llu us1_10=%llu us11_35=%llu us36_100=%llu us_over100=%llu\n",
                                                 (unsigned long long)win_diag_deadline_due,
                                                 (unsigned long long)win_diag_deadline_1_10,
