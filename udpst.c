@@ -201,6 +201,7 @@ extern uint64_t udpst_win_late_le_100us, udpst_win_late_le_1000us;
 extern uint64_t udpst_win_late_le_10000us, udpst_win_late_gt_10000us;
 static int win_timing_diag = 0;
 static uint64_t win_diag_last_ns = 0, win_diag_poll_ns = 0;
+static uint64_t win_diag_loop_prev_ns = 0, win_diag_loop_max_gap_ns = 0;
 static uint64_t win_diag_polls = 0, win_diag_zero_polls = 0;
 static uint64_t win_diag_timer_calls = 0, win_diag_timer_late_ns = 0;
 static uint64_t win_diag_timer_max_late_ns = 0;
@@ -704,6 +705,17 @@ int main(int argc, char **argv) {
 #endif
         repo.idleConnIndex = repo.maxConnIndex; // Save idle connection index
         while (!sig_exit) {
+#ifdef _WIN32
+                if (win_timing_diag) {
+                        uint64_t loop_now_ns;
+                        if (udpst_win32_monotonic_ns(&loop_now_ns) == 0) {
+                                if (win_diag_loop_prev_ns && loop_now_ns >= win_diag_loop_prev_ns &&
+                                    loop_now_ns - win_diag_loop_prev_ns > win_diag_loop_max_gap_ns)
+                                        win_diag_loop_max_gap_ns = loop_now_ns - win_diag_loop_prev_ns;
+                                win_diag_loop_prev_ns = loop_now_ns;
+                        }
+                }
+#endif
 #ifdef DISABLE_INT_TIMER
                 sig_alrm = 1; // Simulate expiry of system interval timer
 #endif
@@ -1023,7 +1035,9 @@ int main(int argc, char **argv) {
                                                         : 0.0;
                                                 double accepted_pps = elapsed_s > 0.0
                                                         ? (double)udpst_win_send_ok_packets / elapsed_s : 0.0;
-                                                fprintf(stderr, "[UDPST-CLIENT-RATE] elapsed_ms=%.3f accepted_mbps=%.3f accepted_pps=%.1f poll_calls=%llu (winsock_only)\n",
+                                                fprintf(stderr, "[UDPST-LOOP-GAP] max_gap_us=%.1f (includes_waits_and_work)\n",
+                                                (double)win_diag_loop_max_gap_ns / 1000.0);
+                                        fprintf(stderr, "[UDPST-CLIENT-RATE] elapsed_ms=%.3f accepted_mbps=%.3f accepted_pps=%.1f poll_calls=%llu (winsock_only)\n",
                                                         elapsed_s * 1000.0, accepted_mbps, accepted_pps,
                                                         (unsigned long long)win_diag_polls);
                                         }
@@ -1077,6 +1091,7 @@ int main(int argc, char **argv) {
                                         memset(win_diag_timer_slot_count, 0, sizeof(win_diag_timer_slot_count));
                                         memset(win_diag_timer_slot_max_ns, 0, sizeof(win_diag_timer_slot_max_ns));
                                         win_diag_last_ns = diag_now_ns;
+                                        win_diag_loop_max_gap_ns = 0;
                                         win_diag_poll_ns = win_diag_polls = win_diag_zero_polls = 0;
                                         win_diag_timer_calls = win_diag_timer_late_ns = win_diag_timer_max_late_ns = 0;
                                 }
