@@ -1014,6 +1014,19 @@ int main(int argc, char **argv) {
                                                 (unsigned long long)win_diag_wait_due,
                                                 (unsigned long long)win_diag_wait_short,
                                                 (unsigned long long)win_diag_wait_no_data_timer);
+                                        /* Monotonic elapsed time avoids treating a delayed
+                                         * diagnostics window as exactly one second. */
+                                        {
+                                                double elapsed_s = (double)(diag_now_ns - win_diag_last_ns) / 1000000000.0;
+                                                double accepted_mbps = elapsed_s > 0.0
+                                                        ? (double)udpst_win_send_ok_bytes * 8.0 / elapsed_s / 1000000.0
+                                                        : 0.0;
+                                                double accepted_pps = elapsed_s > 0.0
+                                                        ? (double)udpst_win_send_ok_packets / elapsed_s : 0.0;
+                                                fprintf(stderr, "[UDPST-CLIENT-RATE] elapsed_ms=%.3f accepted_mbps=%.3f accepted_pps=%.1f poll_calls=%llu (winsock_only)\n",
+                                                        elapsed_s * 1000.0, accepted_mbps, accepted_pps,
+                                                        (unsigned long long)win_diag_polls);
+                                        }
                                         fprintf(stderr, "[UDPST-SEND] accepted_bytes=%llu accepted_packets=%llu failed=%llu wouldblock=%llu (Winsock acceptance only)\n",
                                                 (unsigned long long)udpst_win_send_ok_bytes,
                                                 (unsigned long long)udpst_win_send_ok_packets,
