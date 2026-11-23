@@ -197,6 +197,8 @@ extern uint64_t udpst_win_send_ok_bytes, udpst_win_send_ok_packets;
 extern uint64_t udpst_win_send_failed, udpst_win_send_wouldblock;
 extern uint64_t udpst_win_scheduled_packets, udpst_win_pacing_late_events;
 extern uint64_t udpst_win_pacing_late_max_us, udpst_win_pacing_debt_clamps;
+extern uint64_t udpst_win_late_le_100us, udpst_win_late_le_1000us;
+extern uint64_t udpst_win_late_le_10000us, udpst_win_late_gt_10000us;
 static int win_timing_diag = 0;
 static uint64_t win_diag_last_ns = 0, win_diag_poll_ns = 0;
 static uint64_t win_diag_polls = 0, win_diag_zero_polls = 0;
@@ -1026,6 +1028,13 @@ int main(int argc, char **argv) {
                                                 (unsigned long long)udpst_win_pacing_debt_clamps);
                                         udpst_win_scheduled_packets = udpst_win_pacing_late_events = 0;
                                         udpst_win_pacing_late_max_us = udpst_win_pacing_debt_clamps = 0;
+                                        fprintf(stderr, "[UDPST-PACING-LATE] le100us=%llu us101_1000=%llu us1001_10000=%llu gt10000us=%llu\n",
+                                                (unsigned long long)udpst_win_late_le_100us,
+                                                (unsigned long long)udpst_win_late_le_1000us,
+                                                (unsigned long long)udpst_win_late_le_10000us,
+                                                (unsigned long long)udpst_win_late_gt_10000us);
+                                        udpst_win_late_le_100us = udpst_win_late_le_1000us = 0;
+                                        udpst_win_late_le_10000us = udpst_win_late_gt_10000us = 0;
                                         fprintf(stderr, "[UDPST-DEADLINES] due=%llu us1_10=%llu us11_35=%llu us36_100=%llu us_over100=%llu\n",
                                                 (unsigned long long)win_diag_deadline_due,
                                                 (unsigned long long)win_diag_deadline_1_10,
