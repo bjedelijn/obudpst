@@ -27,13 +27,14 @@
 # ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 # POSSIBILITY OF SUCH DAMAGE.
 cmake_minimum_required(VERSION 3.5...3.10)
+# CMP0091 must be NEW before project() enables the MSVC languages.
+# Otherwise CMake embeds /MD in the compiler flags, overriding /MT targets.
+if(POLICY CMP0091)
+    cmake_policy(SET CMP0091 NEW)
+endif()
 project(OB-UDPST)
-# A standalone Windows client must not depend on the Visual C++ redistributable.
-# CMake 3.15+ supports CMP0091 and MSVC_RUNTIME_LIBRARY; set before targets.
-if(WIN32 AND MSVC)
-    if(POLICY CMP0091)
-        cmake_policy(SET CMP0091 NEW)
-    endif()
+if(MSVC)
+    # /MT Release and /MTd Debug; no VC redistributable required.
     set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 endif()
 if(${CMAKE_VERSION} VERSION_GREATER "3.3.0")
